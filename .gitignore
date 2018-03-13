@@ -1,0 +1,8 @@
+*.s
+*.o
+*.txt
+*.swp
+
+exit
+exit0
+asmium
