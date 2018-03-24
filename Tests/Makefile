@@ -7,7 +7,7 @@ TEST_S_OUT = $(addsuffix .o, $(TESTS))
 TEST_ASMIUM_BIN = $(addsuffix _asmium.bin, $(TESTS))
 TEST_S_BIN = $(addsuffix .bin, $(TESTS))
 
-default: $(TEST_ASMIUM_OUT) $(TEST_S_OUT) $(TEST_ASMIUM_BIN) $(TEST_S_BIN)
+test: $(TEST_ASMIUM_OUT) $(TEST_S_OUT) $(TEST_ASMIUM_BIN) $(TEST_S_BIN)
 	make $(TEST_TARGETS)
 
 clean:
