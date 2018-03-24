@@ -1,9 +1,11 @@
 *.s
 *.o
 *.txt
+*.bin
 
 *.swp
 
 exit
 exit0
 asmium
+testbin

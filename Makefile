@@ -5,11 +5,16 @@ default: asmium
 asmium: $(SRCS) Makefile
 	$(CC) $(CFLAGS) -o asmium $(SRCS)
 
-%.o : %.asm asmium
-	./asmium $*.asm | xxd -r -p > $*.o
-
-test : exit0
-	./exit0
+test :
+	make -C Tests/
 
 clean: 
 	-rm asmium
+	-rm testbin
+	-rm *.o
+
+
+run: asmium
+	./asmium testbin.s -o testbin.o
+	make testbin
+	./testbin
