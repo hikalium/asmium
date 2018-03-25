@@ -3,7 +3,7 @@ _main:
 loop:
 	inc edi
 	cmp 10 edi
-	jnz loop
+	jne loop:
 	rax = 0x2000001
 	syscall
 	retq

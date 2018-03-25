@@ -1,5 +1,5 @@
 ASMIUM = ../asmium
-TESTS = exit0 exit1
+TESTS = exit0 exit1 loop0
 
 TEST_TARGETS = $(addsuffix .test, $(TESTS))
 TEST_ASMIUM_OUT = $(addsuffix _asmium.o, $(TESTS))
