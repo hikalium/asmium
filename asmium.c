@@ -20,6 +20,7 @@ typedef enum {
   kBinaryOperator,
   kLabel,
   kRegister,
+  kLineDelimiter,
 } TokenType;
 
 const char *mnemonic_name[] = {"push",    "pop", "xor", "mov", "nop", "retq",
@@ -54,6 +55,9 @@ size_t bin_buf_size;
 
 Label labels[MAX_LABELS];
 int labels_count;
+
+FILE* dst_fp = NULL;
+int is_hex_mode = 0;
 
 void Error(const char *s) {
   fputs(s, stderr);
@@ -201,9 +205,11 @@ void PrintBody(FILE *fp) {
   for (i = 0; i < bin_buf_size; i++) {
     fputc(bin_buf[i], fp);
   }
-  // 4-byte align
-  for (; i & 0x3; i++) {
-    fputc(0x00, fp);
+  if(!is_hex_mode){
+    // 4-byte align
+    for (; i & 0x3; i++) {
+      fputc(0x00, fp);
+    }
   }
 }
 
@@ -215,6 +221,15 @@ void PrintFooter(FILE *fp) {
 
 uint8_t ModRM(uint8_t mod, uint8_t r, uint8_t r_m) {
   return (mod << 6) | (r << 3) | r_m;
+}
+
+void PutByte(uint8_t byte)
+{
+  bin_buf[bin_buf_size++] = byte;
+  printf("%02X ", byte);
+  if(dst_fp && is_hex_mode){
+    fprintf(dst_fp, "%02X ", byte);
+  }
 }
 
 #define PREFIX_REX 0x40
@@ -240,6 +255,7 @@ uint8_t ModRM(uint8_t mod, uint8_t r, uint8_t r_m) {
 #define REG_rSI 0x6
 #define REG_rDI 0x7
 
+
 int main(int argc, char *argv[]) {
   int src_path_index = 0;
   int dst_path_index = 0;
@@ -250,6 +266,8 @@ int main(int argc, char *argv[]) {
         dst_path_index = i;
       }
       continue;
+    } else if (strcmp(argv[i], "--hex") == 0) {
+      is_hex_mode = 1;
     }
     src_path_index = i;
   }
@@ -259,9 +277,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  printf("src: %s\ndst: %s\n", argv[src_path_index], argv[dst_path_index]);
+  //printf("src: %s\ndst: %s\n", argv[src_path_index], argv[dst_path_index]);
   FILE *src_fp = fopen(argv[src_path_index], "rb");
-  FILE *dst_fp = fopen(argv[dst_path_index], "wb");
+  dst_fp = fopen(argv[dst_path_index], "wb");
 
   if (!src_fp || !dst_fp) return 0;
 
@@ -273,12 +291,18 @@ int main(int argc, char *argv[]) {
   tokens_count = 0;
   for (int i = 0; i <= size; i++) {
     if (i >= size || buf[i] <= ' ') {
+      char old_char = buf[i];
       buf[i] = 0;
       if (state == kInToken) {
         state = kNotInToken;
         tokens[tokens_count] = p;
         token_types[tokens_count] =
             getTypeOfToken(p, &token_values[tokens_count]);
+        tokens_count++;
+      }
+      if(old_char == '\n'){
+        tokens[tokens_count] = NULL;
+        token_types[tokens_count] = kLineDelimiter;
         tokens_count++;
       }
       if (i >= size) break;
@@ -292,62 +316,61 @@ int main(int argc, char *argv[]) {
   // <label>
   // <operator> (<reg> | <imm> | <label>)* <option>*
   // <reg> <op> (<reg> | <imm>)
-  printf("%d tokens\n", tokens_count);
+  //printf("%d tokens\n", tokens_count);
   for (int i = 0; i < tokens_count;) {
     TokenType type = token_types[i];
     const char *mn = tokens[i];
     int mn_idx = i++;
-    printf("%d: %s %d\n", i, mn, type);
+    //printf("%d: %s %d\n", i, mn, type);
     if (type == kMnemonic) {
       if (strcmp(mn, "push") == 0) {
         const char *reg = tokens[i++];
         if (strcmp(reg, "rbp") == 0) {
-          bin_buf[bin_buf_size++] = 0x55;
+          PutByte(0x55);
         } else {
           Error("Not implemented");
         }
-        puts("push");
       } else if (strcmp(mn, "mov") == 0) {
         const char *src = tokens[i++];
         const char *dst = tokens[i++];
-        printf("mov %s = %s\n", src, dst);
+        //printf("mov %s = %s\n", src, dst);
 
-        bin_buf[bin_buf_size++] = PREFIX_REX | PREFIX_REX_BITS_W;
-        bin_buf[bin_buf_size++] = OP_MOV_Ev_Gv;
-        bin_buf[bin_buf_size++] = ModRM(0b11, REG_rSP, REG_rBP);
+        PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+        PutByte(OP_MOV_Ev_Gv);
+        PutByte(ModRM(0b11, REG_rSP, REG_rBP));
       } else if (strcmp(mn, "inc") == 0) {
         const char *reg = tokens[i];
         uint64_t reg_num = token_values[i];
         i++;
-        printf("inc %s\n", reg);
+        //printf("inc %s\n", reg);
 
-        // bin_buf[bin_buf_size++] = PREFIX_REX | PREFIX_REX_BITS_W;
-        bin_buf[bin_buf_size++] = OP_INC_DEC_Grp5;
-        bin_buf[bin_buf_size++] = ModRM(0b11, 0b000, reg_num & 7);
+        // PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+        PutByte(OP_INC_DEC_Grp5);
+        PutByte(ModRM(0b11, 0b000, reg_num & 7));
       } else if (strcmp(mn, "cmp") == 0) {
         const Token left = GetToken(i++);
         const Token right = GetToken(i++);
         //
-        printf("cmp ");
+        //printf("cmp ");
         PrintToken(&left);
         PrintToken(&right);
         putchar('\n');
         //
         if (left.type == kImmediate && right.type == kRegister) {
-          // bin_buf[bin_buf_size++] = PREFIX_REX | PREFIX_REX_BITS_W;
-          bin_buf[bin_buf_size++] = OP_Immediate_Grp1_Ev_Ib;
-          bin_buf[bin_buf_size++] = ModRM(0b11, 0b111, right.value & 7);
+          // PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+          PutByte(OP_Immediate_Grp1_Ev_Ib);
+          PutByte(ModRM(0b11, 0b111, right.value & 7));
           if (left.value & ~0xff) {
             Error("Not implemented imm larger than 8bits");
           }
-          bin_buf[bin_buf_size++] = left.value & 0xff;
+          PutByte(left.value & 0xff);
         } else {
           Error("Not implemented");
         }
       } else if (strcmp(mn, "jne") == 0) {
         const Token target = GetToken(i++);
         //
-        printf("jne ");
+        //printf("jne ");
         PrintToken(&target);
         putchar('\n');
         //
@@ -361,31 +384,26 @@ int main(int argc, char *argv[]) {
           if ((rel_offset & ~127) && ~(rel_offset | 127)) {
             Error("Offset out of bound (not impleented yet)");
           }
-          bin_buf[bin_buf_size++] = OP_Jcc_BASE | COND_Jcc_NE;
-          bin_buf[bin_buf_size++] = rel_offset & 0xff;
+          PutByte(OP_Jcc_BASE | COND_Jcc_NE);
+          PutByte(rel_offset & 0xff);
         } else {
           Error("Not implemented");
         }
       } else if (strcmp(mn, "xor") == 0) {
-        puts("xor");
         const char *src = tokens[i++];
         const char *dst = tokens[i++];
-        bin_buf[bin_buf_size++] = 0x31;
-        bin_buf[bin_buf_size++] = 0xc0;
+        PutByte(0x31);
+        PutByte(0xc0);
       } else if (strcmp(mn, "pop") == 0) {
-        puts("pop");
         const char *reg = tokens[i++];
-        bin_buf[bin_buf_size++] = 0x5d;
+        PutByte(0x5d);
       } else if (strcmp(mn, "retq") == 0) {
-        puts("retq");
-        bin_buf[bin_buf_size++] = 0xc3;
+        PutByte(0xc3);
       } else if (strcmp(mn, "nop") == 0) {
-        puts("nop");
-        bin_buf[bin_buf_size++] = 0x90;
+        PutByte(0x90);
       } else if (strcmp(mn, "syscall") == 0) {
-        puts("syscall");
-        bin_buf[bin_buf_size++] = 0x0f;
-        bin_buf[bin_buf_size++] = 0x05;
+        PutByte(0x0f);
+        PutByte(0x05);
       } else {
         printf("mn: %s\n", mn);
         Error("Not implemented");
@@ -402,15 +420,15 @@ int main(int argc, char *argv[]) {
         printf("%s(%x.%llx) = %s(%x.%llx)\n", dst, dst_type, dst_value, src,
                src_type, src_value);
         if (dst_type == kRegister && src_type == kRegister) {
-          bin_buf[bin_buf_size++] = PREFIX_REX | PREFIX_REX_BITS_W;
-          bin_buf[bin_buf_size++] = OP_MOV_Ev_Gv;
-          bin_buf[bin_buf_size++] = ModRM(0b11, src_value & 7, dst_value & 7);
+          PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+          PutByte(OP_MOV_Ev_Gv);
+          PutByte(ModRM(0b11, src_value & 7, dst_value & 7));
         } else if (dst_type == kRegister && src_type == kImmediate) {
-          bin_buf[bin_buf_size++] = PREFIX_REX | PREFIX_REX_BITS_W;
-          bin_buf[bin_buf_size++] = OP_MOV_Ev_Iz;
-          bin_buf[bin_buf_size++] = ModRM(0b11, 0b000, dst_value & 7);
+          PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+          PutByte(OP_MOV_Ev_Iz);
+          PutByte(ModRM(0b11, 0b000, dst_value & 7));
           for (int bi = 0; bi < 4; bi++) {
-            bin_buf[bin_buf_size++] = (src_value >> (8 * bi)) & 0xff;
+            PutByte((src_value >> (8 * bi)) & 0xff);
           }
         } else {
           Error("Not implemented");
@@ -428,15 +446,22 @@ int main(int argc, char *argv[]) {
       if (i < tokens_count && token_types[i] == kBinaryOperator) {
         continue;
       }
+    } else if(type == kLineDelimiter) {
+      putchar('\n');
+      if(dst_fp && is_hex_mode){
+        fputc('\n', dst_fp);
+      }
+      continue;
     }
     printf("> %s (type: %d)\n", mn, type);
     Error("Unexpected token");
   }
 
-  PrintHeader(dst_fp, bin_buf_size);
-  PrintBody(dst_fp);
-  PrintFooter(dst_fp);
-  puts("done");
+  if(!is_hex_mode){
+    PrintHeader(dst_fp, bin_buf_size);
+    PrintBody(dst_fp);
+    PrintFooter(dst_fp);
+  }
 
   return 0;
 }

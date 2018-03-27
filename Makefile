@@ -7,6 +7,7 @@ asmium: $(SRCS) Makefile
 
 test :
 	make -C Tests/
+	make -C HexTests/
 
 clean: 
 	-rm asmium

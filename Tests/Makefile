@@ -14,7 +14,7 @@ clean:
 	-rm *.bin *.o
 
 %.test : %_asmium.bin %.bin Makefile
-	@- ./$*.bin;  ./test.sh ./$*_asmium.bin $$?
+	@- ./$*.bin; ./test.sh ./$*_asmium.bin $$?
 
 %.bin : %.o Makefile
 	gcc -o $@ $*.o
