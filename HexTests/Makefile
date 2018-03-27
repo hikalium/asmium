@@ -7,11 +7,11 @@ test:
 	make $(TEST_TARGETS)
 
 clean:
-	-rm *.bin *.o *.hex
+	-rm *.bin *.o *_hex.txt
 
-%.test : %.hex %_expected.hex Makefile
-	@diff -u $*_expected.hex $*.hex && echo "PASS $*"
+%.test : %_hex.txt %_hex_expected.txt Makefile
+	@diff -u $*_hex_expected.txt $*_hex.txt && echo "PASS $*"
 
-%.hex : %.s Makefile
-	$(ASMIUM) --hex -o $*.hex $*.s
+%_hex.txt : %.s Makefile
+	$(ASMIUM) --hex -o $*_hex.txt $*.s
 
