@@ -4,6 +4,8 @@
 
 *.swp
 
+experiment/
+
 exit
 exit0
 asmium

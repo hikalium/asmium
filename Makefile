@@ -1,4 +1,5 @@
 SRCS=asmium.c
+CFLAGS=-Wall -Wpedantic
 
 default: asmium
 

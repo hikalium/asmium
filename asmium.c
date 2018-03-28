@@ -21,12 +21,13 @@ typedef enum {
   kLabel,
   kRegister,
   kLineDelimiter,
+  kDirective,
 } TokenType;
 
 const char *mnemonic_name[] = {"push",    "pop", "xor", "mov", "nop", "retq",
                                "syscall", "inc", "cmp", "jne", NULL};
 
-const char *op_name[] = {"=", NULL};
+const char *op_name[] = {"=", "^=", NULL};
 
 const char *register_name[] = {"eax", "ecx", "edx", "ebx", "esp", "ebp",
                                "esi", "edi", "rax", "rcx", "rdx", "rbx",
@@ -113,6 +114,8 @@ int getTypeOfToken(const char *token, uint64_t *token_value) {
     type = kBinaryOperator;
   else if (~(idx = find(register_name, token)))
     type = kRegister;
+  else if(token[0] == '.')
+    type = kDirective;
   else {
     // check if it is immediate value
     char *p;
@@ -232,6 +235,15 @@ void PutByte(uint8_t byte)
   }
 }
 
+uint8_t ToRegNum(const Token *token)
+{
+  if(token->type != kRegister){
+    Error("Invalid token for regnum");
+  }
+  // add check and arg to bits check.
+  return token->value & 7;
+}
+
 #define PREFIX_REX 0x40
 #define PREFIX_REX_BITS_W 0x08
 #define PREFIX_REX_BITS_R 0x04
@@ -242,6 +254,7 @@ void PutByte(uint8_t byte)
 #define OP_MOV_Ev_Gv 0x89
 #define OP_MOV_Ev_Iz 0xc7
 #define OP_INC_DEC_Grp5 0xff
+#define OP_POP_GReg 0x58  /* 0101 1rrr*/
 
 #define OP_Jcc_BASE 0x70
 #define COND_Jcc_NE 0x05
@@ -331,22 +344,17 @@ int main(int argc, char *argv[]) {
           Error("Not implemented");
         }
       } else if (strcmp(mn, "mov") == 0) {
-        const char *src = tokens[i++];
-        const char *dst = tokens[i++];
+        const Token src = GetToken(i++);
+        const Token dst = GetToken(i++);
         //printf("mov %s = %s\n", src, dst);
 
         PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
         PutByte(OP_MOV_Ev_Gv);
-        PutByte(ModRM(0b11, REG_rSP, REG_rBP));
+        PutByte(ModRM(3 /* 0b11 */, ToRegNum(&src), ToRegNum(&dst)));
       } else if (strcmp(mn, "inc") == 0) {
-        const char *reg = tokens[i];
-        uint64_t reg_num = token_values[i];
-        i++;
-        //printf("inc %s\n", reg);
-
-        // PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+        const Token reg = GetToken(i++);
         PutByte(OP_INC_DEC_Grp5);
-        PutByte(ModRM(0b11, 0b000, reg_num & 7));
+        PutByte(ModRM(3 /*0b11*/, 0 /* 0b000 */, ToRegNum(&reg)));
       } else if (strcmp(mn, "cmp") == 0) {
         const Token left = GetToken(i++);
         const Token right = GetToken(i++);
@@ -359,7 +367,7 @@ int main(int argc, char *argv[]) {
         if (left.type == kImmediate && right.type == kRegister) {
           // PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
           PutByte(OP_Immediate_Grp1_Ev_Ib);
-          PutByte(ModRM(0b11, 0b111, right.value & 7));
+          PutByte(ModRM(3 /* 0b11 */, 7 /* 0b111 */, ToRegNum(&right)));
           if (left.value & ~0xff) {
             Error("Not implemented imm larger than 8bits");
           }
@@ -390,13 +398,13 @@ int main(int argc, char *argv[]) {
           Error("Not implemented");
         }
       } else if (strcmp(mn, "xor") == 0) {
-        const char *src = tokens[i++];
-        const char *dst = tokens[i++];
+        const Token src = GetToken(i++);
+        const Token dst = GetToken(i++);
         PutByte(0x31);
-        PutByte(0xc0);
+        PutByte(ModRM(3 /* 0b11 */, ToRegNum(&src), ToRegNum(&dst)));
       } else if (strcmp(mn, "pop") == 0) {
-        const char *reg = tokens[i++];
-        PutByte(0x5d);
+        const Token reg = GetToken(i++);
+        PutByte(OP_POP_GReg | ToRegNum(&reg));
       } else if (strcmp(mn, "retq") == 0) {
         PutByte(0xc3);
       } else if (strcmp(mn, "nop") == 0) {
@@ -422,11 +430,11 @@ int main(int argc, char *argv[]) {
         if (dst_type == kRegister && src_type == kRegister) {
           PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
           PutByte(OP_MOV_Ev_Gv);
-          PutByte(ModRM(0b11, src_value & 7, dst_value & 7));
+          PutByte(ModRM(3 /* 0b11 */, src_value & 7, dst_value & 7));
         } else if (dst_type == kRegister && src_type == kImmediate) {
           PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
           PutByte(OP_MOV_Ev_Iz);
-          PutByte(ModRM(0b11, 0b000, dst_value & 7));
+          PutByte(ModRM(3 /* 0b11 */, 0 /* 0b000 */, dst_value & 7));
           for (int bi = 0; bi < 4; bi++) {
             PutByte((src_value >> (8 * bi)) & 0xff);
           }
@@ -434,6 +442,11 @@ int main(int argc, char *argv[]) {
           Error("Not implemented");
         }
         i++;
+      } else if(strcmp(mn, "^=") == 0){
+        const Token dst = GetToken(i - 2);
+        const Token src = GetToken(i++);
+        PutByte(0x31);
+        PutByte(ModRM(3 /* 0b11 */, ToRegNum(&src), ToRegNum(&dst)));
       } else {
         Error("Not implemented");
       }
@@ -450,6 +463,31 @@ int main(int argc, char *argv[]) {
       putchar('\n');
       if(dst_fp && is_hex_mode){
         fputc('\n', dst_fp);
+      }
+      continue;
+    } else if(type == kDirective){
+      printf("DIRECTIVE: %s\n", mn);
+      if(strcmp(mn, ".bits") == 0){
+        const Token bits = GetToken(i++);
+        if(bits.value == 64){
+          puts(".bits 64");
+          continue;
+        }
+        Error("Invalid bits for .bits");
+      } else if(strcmp(mn, ".hexbytes") == 0){
+        char *p;
+        for(;;){
+          const Token bt = GetToken(i++);
+          if(bt.type != kImmediate && bt.type != kUnknown) break;
+          uint8_t value = strtol(bt.str, &p, 16);
+          if (bt.str[0] != '\0' && *p == '\0') {
+            // entire token is valid
+            PutByte(value);
+            continue;
+          }
+          Error("Invalid token in .hexbytes");
+        }
+        i--;
       }
       continue;
     }
