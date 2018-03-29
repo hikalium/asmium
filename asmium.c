@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define BUF_SIZE 4096
-#define BIN_BUF_SIZE 4096
+#define BIN_BUF_SIZE 8192
 #define MAX_TOKENS 1024
 #define MAX_LABELS 16
 
@@ -474,20 +474,95 @@ int main(int argc, char *argv[]) {
           continue;
         }
         Error("Invalid bits for .bits");
-      } else if(strcmp(mn, ".hexbytes") == 0){
+      } else if(strncmp(mn, ".data8", 6) == 0){
+        int base = -1;
+        char base_char = mn[6];
+        switch(base_char){
+          case 'x':
+            base = 16;
+            break;
+          case 0x00:
+            base = 0;
+            break;
+          default:
+            Error("Invalid base");
+        }
         char *p;
         for(;;){
           const Token bt = GetToken(i++);
           if(bt.type != kImmediate && bt.type != kUnknown) break;
-          uint8_t value = strtol(bt.str, &p, 16);
+          uint8_t value = strtol(bt.str, &p, base);
           if (bt.str[0] != '\0' && *p == '\0') {
             // entire token is valid
             PutByte(value);
             continue;
           }
-          Error("Invalid token in .hexbytes");
+          Error("Invalid token in .hexbyte");
         }
         i--;
+      } else if(strncmp(mn, ".data32", 7) == 0){
+        int base = -1;
+        char base_char = mn[7];
+        switch(base_char){
+          case 'x':
+            base = 16;
+            break;
+          case 0x00:
+            base = 0;
+            break;
+          default:
+            Error("Invalid base");
+        }
+        char *p;
+        for(;;){
+          const Token bt = GetToken(i++);
+          if(bt.type != kImmediate && bt.type != kUnknown) break;
+          uint32_t value = strtol(bt.str, &p, base);
+          if (bt.str[0] != '\0' && *p == '\0') {
+            // entire token is valid
+            PutByte(value & 0xff);
+            PutByte((value >> 8) & 0xff);
+            PutByte((value >> 16) & 0xff);
+            PutByte((value >> 24) & 0xff);
+            continue;
+          }
+          Error("Invalid token in .hexbyte");
+        }
+        i--;
+      } else if(strcmp(mn, ".data16") == 0){
+        char *p;
+        for(;;){
+          const Token bt = GetToken(i++);
+          if(bt.type != kImmediate) break;
+          uint16_t value = strtol(bt.str, &p, 10);
+          if (bt.str[0] != '\0' && *p == '\0') {
+            // entire token is valid
+            PutByte(value & 0xff);
+            PutByte((value >> 8) & 0xff);
+            continue;
+          }
+          Error("Invalid token in .data16");
+        }
+        i--;
+      } else if(strcmp(mn, ".asciinz") == 0){
+        const Token str = GetToken(i++);
+        if(str.type != kUnknown){
+          Error("Invalid token in .asciinz");
+        }
+        for(int i = 0; str.str[i]; i++){
+          PutByte(str.str[i]);
+        }
+      } else if(strcmp(mn, ".offset") == 0){
+        const Token ofs = GetToken(i++);
+        if(ofs.type != kImmediate){
+          Error("Invalid token in .offset");
+        }
+        while(bin_buf_size < ofs.value){
+          PutByte(0x00);
+        }
+        printf("@+0x%zX\n", bin_buf_size);
+      } else{
+        Error("Unknown directive");
       }
       continue;
     }
