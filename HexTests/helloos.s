@@ -24,10 +24,10 @@
 
 .offset		0x50
 .data8x		b8 00 00
-.data8x		8e d0
+	ss = ax
 .data8x		bc 00 7c
-.data8x		8e d8
-.data8x		8e c0
+	ds = ax
+	es = ax
 .data8x		be 74 7c
 .data8x		8a 04
 .data8x		83 c6 01

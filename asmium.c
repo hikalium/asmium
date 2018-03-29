@@ -20,6 +20,7 @@ typedef enum {
   kBinaryOperator,
   kLabel,
   kRegister,
+  kSegmentRegister,
   kLineDelimiter,
   kDirective,
 } TokenType;
@@ -30,8 +31,14 @@ const char *mnemonic_name[] = {"push",    "pop", "xor", "mov", "nop", "retq",
 const char *op_name[] = {"=", "^=", NULL};
 
 const char *register_name[] = {"eax", "ecx", "edx", "ebx", "esp", "ebp",
-                               "esi", "edi", "rax", "rcx", "rdx", "rbx",
-                               "rsp", "rbp", "rsi", "rdi", NULL};
+                               "esi", "edi", // 32bits
+                               "rax", "rcx", "rdx", "rbx",
+                               "rsp", "rbp", "rsi", "rdi", // 64bits
+                               "ax", "cx", "dx", "bx",
+                               "sp", "bp", "si", "di", // 16bits
+                               NULL};
+
+const char *segment_register_name[] = {"es", "cs", "ss", "ds", "fs", "gs", NULL};
 
 typedef struct {
   int offset;
@@ -114,6 +121,8 @@ int getTypeOfToken(const char *token, uint64_t *token_value) {
     type = kBinaryOperator;
   else if (~(idx = find(register_name, token)))
     type = kRegister;
+  else if (~(idx = find(segment_register_name, token)))
+    type = kSegmentRegister;
   else if(token[0] == '.')
     type = kDirective;
   else {
@@ -383,7 +392,7 @@ int main(int argc, char *argv[]) {
         putchar('\n');
         //
         if (target.type == kImmediate) {
-          if (target.value < 0 || 0xff < target.value) {
+          if (0xff < target.value) {
             Error("Invalid int number");
           }
           PutByte(0xcd);
@@ -467,6 +476,9 @@ int main(int argc, char *argv[]) {
           PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
           PutByte(OP_MOV_Ev_Gv);
           PutByte(ModRM(3 /* 0b11 */, src_value & 7, dst_value & 7));
+        } else if (dst_type == kSegmentRegister && src_type == kRegister) {
+          PutByte(0x8e);
+          PutByte(ModRM(3 /* 0b11 */, dst_value & 7, src_value & 7));
         } else if (dst_type == kRegister && src_type == kImmediate) {
           PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
           PutByte(OP_MOV_Ev_Iz);
@@ -490,7 +502,7 @@ int main(int argc, char *argv[]) {
     } else if (type == kLabel) {
       AddLabel(mn, bin_buf_size);
       continue;
-    } else if (type == kRegister) {
+    } else if (type == kRegister || type == kSegmentRegister) {
       // kRegister appears only prior to kBinaryOperator
       if (i < tokens_count && token_types[i] == kBinaryOperator) {
         continue;
