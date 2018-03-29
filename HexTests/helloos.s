@@ -1,4 +1,6 @@
-.data8x		eb 4e 90
+.bits 16
+	jmp 0x4e
+	nop
 .asciinz	HELLOIPL
 .data16		512
 .data8		1
@@ -21,11 +23,22 @@
 .data16		0
 
 .offset		0x50
-.data8x		b8 00 00 8e d0 bc 00 7c
-.data8x		8e d8 8e c0 be 74 7c 8a
-.data8x		04 83 c6 01 3c 00 74 09
-.data8x		b4 0e bb 0f 00 cd 10 eb
-.data8x		ee f4 eb fd
+.data8x		b8 00 00
+.data8x		8e d0
+.data8x		bc 00 7c
+.data8x		8e d8
+.data8x		8e c0
+.data8x		be 74 7c
+.data8x		8a 04
+.data8x		83 c6 01
+.data8x		3c 00
+.data8x		74 09
+.data8x		b4 0e
+.data8x		bb 0f 00
+	int 0x10
+.data8x		eb ee 
+	hlt
+	jmp -3
 
 .data8x		0a 0a
 .asciinz	HELLO

@@ -25,7 +25,7 @@ typedef enum {
 } TokenType;
 
 const char *mnemonic_name[] = {"push",    "pop", "xor", "mov", "nop", "retq",
-                               "syscall", "inc", "cmp", "jne", NULL};
+                               "syscall", "inc", "cmp", "jne", "jmp", "hlt", "int", NULL};
 
 const char *op_name[] = {"=", "^=", NULL};
 
@@ -375,6 +375,40 @@ int main(int argc, char *argv[]) {
         } else {
           Error("Not implemented");
         }
+      } else if (strcmp(mn, "int") == 0) {
+        const Token target = GetToken(i++);
+        //
+        //printf("jne ");
+        PrintToken(&target);
+        putchar('\n');
+        //
+        if (target.type == kImmediate) {
+          if (target.value < 0 || 0xff < target.value) {
+            Error("Invalid int number");
+          }
+          PutByte(0xcd);
+          PutByte(target.value & 0xff);
+        } else {
+          Error("Not implemented");
+        }
+      } else if (strcmp(mn, "jmp") == 0) {
+        const Token target = GetToken(i++);
+        //
+        //printf("jne ");
+        PrintToken(&target);
+        putchar('\n');
+        //
+        if (target.type == kImmediate) {
+          int32_t rel_offset =
+            target.value;
+          if ((rel_offset & ~127) && ~(rel_offset | 127)) {
+            Error("Offset out of bound (not impleented yet)");
+          }
+          PutByte(0xeb);
+          PutByte(rel_offset & 0xff);
+        } else {
+          Error("Not implemented");
+        }
       } else if (strcmp(mn, "jne") == 0) {
         const Token target = GetToken(i++);
         //
@@ -409,6 +443,8 @@ int main(int argc, char *argv[]) {
         PutByte(0xc3);
       } else if (strcmp(mn, "nop") == 0) {
         PutByte(0x90);
+      } else if (strcmp(mn, "hlt") == 0) {
+        PutByte(0xf4);
       } else if (strcmp(mn, "syscall") == 0) {
         PutByte(0x0f);
         PutByte(0x05);
@@ -471,6 +507,10 @@ int main(int argc, char *argv[]) {
         const Token bits = GetToken(i++);
         if(bits.value == 64){
           puts(".bits 64");
+          continue;
+        }
+        if(bits.value == 16){
+          puts(".bits 16");
           continue;
         }
         Error("Invalid bits for .bits");
