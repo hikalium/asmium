@@ -1,12 +1,13 @@
-SRCS=asmium.c
+SRCS=asmium.c tokenizer.c
+HEADERS=asmium.h
 CFLAGS=-Wall -Wpedantic
 
 default: asmium
 
-asmium: $(SRCS) Makefile
+asmium: $(SRCS) $(HEADERS) Makefile
 	$(CC) $(CFLAGS) -o asmium $(SRCS)
 
-test :
+test : asmium
 	make -C Tests/
 	make -C HexTests/
 

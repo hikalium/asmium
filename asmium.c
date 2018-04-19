@@ -1,7 +1,17 @@
+/*
+ALPHABET = [a-zA-Z]
+DIGIT = [0-9]
+
+WORD = ALPHABET(ALPHABET|DIGIT)*
+ASMIUM_SENTENCE = 
+ASMIUM_SRC = ASMIUM_SENTENCE*
+*/
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "asmium.h"
 
 #define BUF_SIZE 4096
 #define BIN_BUF_SIZE 8192
@@ -22,7 +32,10 @@ typedef enum {
   kRegister,
   kSegmentRegister,
   kLineDelimiter,
+  kLineCommentMarker,
   kDirective,
+  kAddressingBegin,
+  kAddressingEnd,
 } TokenType;
 
 const char *mnemonic_name[] = {"push",    "pop", "xor", "mov", "nop", "retq",
@@ -30,13 +43,20 @@ const char *mnemonic_name[] = {"push",    "pop", "xor", "mov", "nop", "retq",
 
 const char *op_name[] = {"=", "^=", NULL};
 
+const char *line_comment_marker[] = {";", NULL};
+
 const char *register_name[] = {"eax", "ecx", "edx", "ebx", "esp", "ebp",
                                "esi", "edi", // 32bits
                                "rax", "rcx", "rdx", "rbx",
                                "rsp", "rbp", "rsi", "rdi", // 64bits
                                "ax", "cx", "dx", "bx",
                                "sp", "bp", "si", "di", // 16bits
+                               "al", "cl", "dl", "bl",
+                               "ah", "ch", "dh", "bh", // 8bits
                                NULL};
+#define IS_REGTYPE32(t) ((t >> 3) == 0)
+#define IS_REGTYPE64(t) ((t >> 3) == 1)
+#define IS_REGTYPE16(t) ((t >> 3) == 2)
 
 const char *segment_register_name[] = {"es", "cs", "ss", "ds", "fs", "gs", NULL};
 
@@ -60,6 +80,8 @@ int tokens_count;
 
 uint8_t bin_buf[BIN_BUF_SIZE];
 size_t bin_buf_size;
+
+uint8_t current_bits = 64;
 
 Label labels[MAX_LABELS];
 int labels_count;
@@ -123,6 +145,12 @@ int getTypeOfToken(const char *token, uint64_t *token_value) {
     type = kRegister;
   else if (~(idx = find(segment_register_name, token)))
     type = kSegmentRegister;
+  else if (~(idx = find(line_comment_marker, token)))
+    type = kLineCommentMarker;
+  else if(token[0] == '[' && !token[1])
+    type = kAddressingBegin;
+  else if(token[0] == ']' && !token[1])
+    type = kAddressingEnd;
   else if(token[0] == '.')
     type = kDirective;
   else {
@@ -277,6 +305,8 @@ uint8_t ToRegNum(const Token *token)
 #define REG_rSI 0x6
 #define REG_rDI 0x7
 
+TokenStr token_str_list[MAX_TOKENS];
+int token_str_list_used = 0;
 
 int main(int argc, char *argv[]) {
   int src_path_index = 0;
@@ -306,6 +336,9 @@ int main(int argc, char *argv[]) {
   if (!src_fp || !dst_fp) return 0;
 
   int size = fread(buf, 1, BUF_SIZE, src_fp);
+  Tokenize(token_str_list, MAX_TOKENS, &token_str_list_used, buf);
+  DebugPrintTokens(token_str_list, token_str_list_used);
+  return 0;
 
   TokenizerState state = kNotInToken;
   char *p;
@@ -480,11 +513,26 @@ int main(int argc, char *argv[]) {
           PutByte(0x8e);
           PutByte(ModRM(3 /* 0b11 */, dst_value & 7, src_value & 7));
         } else if (dst_type == kRegister && src_type == kImmediate) {
-          PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-          PutByte(OP_MOV_Ev_Iz);
-          PutByte(ModRM(3 /* 0b11 */, 0 /* 0b000 */, dst_value & 7));
-          for (int bi = 0; bi < 4; bi++) {
-            PutByte((src_value >> (8 * bi)) & 0xff);
+          if(IS_REGTYPE64(dst_value)){
+            PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+            PutByte(OP_MOV_Ev_Iz);
+            PutByte(ModRM(3 /* 0b11 */, 0 /* 0b000 */, dst_value & 7));
+            for (int bi = 0; bi < 4; bi++) {
+              PutByte((src_value >> (8 * bi)) & 0xff);
+            }
+          } else if(IS_REGTYPE32(dst_value)){
+            PutByte(OP_MOV_Ev_Iz);
+            PutByte(ModRM(3 /* 0b11 */, 0 /* 0b000 */, dst_value & 7));
+            for (int bi = 0; bi < 4; bi++) {
+              PutByte((src_value >> (8 * bi)) & 0xff);
+            }
+          } else if(IS_REGTYPE16(dst_value)){
+            PutByte(0xb8 | (dst_value & 7));
+            for (int bi = 0; bi < 2; bi++) {
+              PutByte((src_value >> (8 * bi)) & 0xff);
+            }
+          } else{
+            Error("Not implemented dst reg type");
           }
         } else {
           Error("Not implemented");
@@ -519,10 +567,12 @@ int main(int argc, char *argv[]) {
         const Token bits = GetToken(i++);
         if(bits.value == 64){
           puts(".bits 64");
+          current_bits = 64;
           continue;
         }
         if(bits.value == 16){
           puts(".bits 16");
+          current_bits = 16;
           continue;
         }
         Error("Invalid bits for .bits");
@@ -617,6 +667,12 @@ int main(int argc, char *argv[]) {
         Error("Unknown directive");
       }
       continue;
+    } else if(type == kLineCommentMarker){
+        for(;;){
+          const Token bt = GetToken(i++);
+          if(bt.type == kLineDelimiter) break;
+        }
+        continue;
     }
     printf("> %s (type: %d)\n", mn, type);
     Error("Unexpected token");
