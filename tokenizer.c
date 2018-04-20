@@ -70,6 +70,10 @@ void Tokenize(TokenStr *toke_str_list, int size, int *used, const char *s)
           s++;
         }
       }
+      if(nest_count){
+        fputs("Block comment marker is not balanced.\n", stderr);
+        exit(EXIT_FAILURE);
+      }
     } else {
       // Token cases
       if(*used >= size){

@@ -56,8 +56,8 @@
 .data8x		f0 ff ff
 
 /*
-Cluster0: 0xff0 (3.5inch FD)
-Cluster1: 0xfff (Reserved)
+/*Cluster0: 0xff0 (3.5inch FD)
+Cluster1: 0xfff (Reserved)*/
 */
 .offset		0x1400
 .data8x		f0 ff ff
