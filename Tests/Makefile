@@ -1,6 +1,7 @@
 ASMIUM = ../asmium
-TESTS = exit0 exit1 loop0
+TESTS = $(basename $(shell find $(TEST_ENV) -name '*.s' | grep -v _asmium))
 
+TEST_ENV = $(shell uname)
 TEST_TARGETS = $(addsuffix .test, $(TESTS))
 TEST_ASMIUM_OUT = $(addsuffix _asmium.o, $(TESTS))
 TEST_S_OUT = $(addsuffix .o, $(TESTS))
