@@ -7,18 +7,18 @@ ASMIUM_SENTENCE =
 ASMIUM_SRC = ASMIUM_SENTENCE*
 */
 
-#include "asmium.h"
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "asmium.h"
 
 #define BUF_SIZE 4096
 #define BIN_BUF_SIZE 8192
 #define MAX_TOKENS 1024
 #define MAX_LABELS 16
-
+/*
 typedef enum {
   kNotInToken,
   kInToken,
@@ -38,7 +38,7 @@ typedef enum {
   kAddressingBegin,
   kAddressingEnd,
 } TokenType;
-
+*/
 const char *mnemonic_name[] = {"push", "pop",     "xor", "mov", "nop",
                                "retq", "syscall", "inc", "cmp", "jne",
                                "jmp",  "hlt",     "int", NULL};
@@ -48,10 +48,12 @@ const char *op_name[] = {"=", "^=", NULL};
 const char *line_comment_marker[] = {";", NULL};
 
 const char *register_name[] = {
+    "al",  "cl",  "dl",  "bl",  "ah",  "ch",  "dh",  "bh",   // 8bits
+    "ax",  "cx",  "dx",  "bx",  "sp",  "bp",  "si",  "di",   // 16bits
     "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",  // 32bits
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",  // 64bits
-    "ax",  "cx",  "dx",  "bx",  "sp",  "bp",  "si",  "di",   // 16bits
-    "al",  "cl",  "dl",  "bl",  "ah",  "ch",  "dh",  "bh",   // 8bits
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",  // 64bits
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",  // 64bits
     NULL};
 #define IS_REGTYPE32(t) ((t >> 3) == 0)
 #define IS_REGTYPE64(t) ((t >> 3) == 1)
@@ -59,13 +61,14 @@ const char *register_name[] = {
 
 const char *segment_register_name[] = {"es", "cs", "ss", "ds",
                                        "fs", "gs", NULL};
-
+/*
 typedef struct {
   int offset;
   const char *str;
   TokenType type;
   uint64_t value;
 } Token;
+*/
 
 typedef struct {
   int offset_in_binary;
@@ -73,10 +76,10 @@ typedef struct {
 } Label;
 
 char buf[BUF_SIZE + 16];
-char *tokens[MAX_TOKENS];
-TokenType token_types[MAX_TOKENS];
-uint64_t token_values[MAX_TOKENS];
-int tokens_count;
+//char *tokens[MAX_TOKENS];
+//TokenType token_types[MAX_TOKENS];
+//uint64_t token_values[MAX_TOKENS];
+//int tokens_count;
 
 uint8_t bin_buf[BIN_BUF_SIZE];
 size_t bin_buf_size;
@@ -122,7 +125,7 @@ int FindLabel(const char *name) {
   }
   return -1;
 }
-
+/*
 Token GetToken(int index) {
   printf("%d\n", index);
   printf("%d\n", tokens_count);
@@ -132,18 +135,22 @@ Token GetToken(int index) {
   Token token = {index, tokens[index], token_types[index], token_values[index]};
   return token;
 }
-
+*/
+/*
 void PrintToken(const Token *token) {
   printf("%s (%x.%llx) ", token->str, token->type, token->value);
 }
-
+*/
+/*
 int find(const char **list, const char *token) {
   for (int i = 0; list[i]; i++) {
     if (strcmp(token, list[i]) == 0) return i;
   }
   return -1;
 }
+*/
 
+/*
 int getTypeOfToken(const char *token, uint64_t *token_value) {
   int idx;
   TokenType type = kUnknown;
@@ -187,333 +194,7 @@ int getTypeOfToken(const char *token, uint64_t *token_value) {
   }
   return type;
 }
-
-uint8_t mach_o_header[0x130] = {
-    0xcf,
-    0xfa,
-    0xed,
-    0xfe,
-    0x07,
-    0x00,
-    0x00,
-    0x01,
-    0x03,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x04,
-    0x00,
-    0x00,
-    0x00,
-    0x10,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x19,
-    0x00,
-    0x00,
-    0x00,
-    0x98,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x08,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x30,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x08,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x07,
-    0x00,
-    0x00,
-    0x00,
-    0x07,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-
-    0x5f,
-    0x5f,
-    0x74,
-    0x65,
-    0x78,
-    0x74,
-    0x00,
-    0x00,  // "__text"
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x5f,
-    0x5f,
-    0x54,
-    0x45,
-    0x58,
-    0x54,
-    0x00,
-    0x00,  // "__TEXT"
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x08,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x30,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x04,
-    0x00,
-    0x80,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x24,
-    0x00,
-    0x00,
-    0x00,
-    0x10,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x0c,
-    0x0a,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x18,
-    0x00,
-    0x00,
-    0x00,
-    // +0xd0
-    0x38,
-    0x01,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x48,
-    0x01,
-    0x00,
-    0x00,
-    0x08,
-    0x00,
-    0x00,
-    0x00,
-    0x0b,
-    0x00,
-    0x00,
-    0x00,
-    0x50,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
-
-uint8_t mach_o_footer[0x18] = {
-    // labe infos?
-    // [uint32_t label_name_offset in label names]
-    // [uint32_t label_type?]
-    // [uint32_t offset_in_binary?]
-    // [uint32_t ???(zero filled)]
-    //
-    // label_type:
-    //    0e 01 00 00 : local label?
-    //    0f 01 00 00 : global label?
-    0x01, 0x00, 0x00, 0x00, 0x0f, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    // label names. each label names should be null terminated.
-    // 0x00, ["label name", ...] [padding to align 4-bytes]
-    0x00, 0x5f, 0x6d, 0x61, 0x69, 0x6e, 0x00, 0x00,  // "_main"
-};
-
+*/
 void PrintHeader(FILE *fp, uint32_t binsize) {
   *((uint32_t *)&mach_o_header[0x40]) = binsize;
   *((uint32_t *)&mach_o_header[0x50]) = binsize;
@@ -557,7 +238,7 @@ void PutByte(uint8_t byte) {
     fprintf(dst_fp, "%02X ", byte);
   }
 }
-
+/*
 uint8_t ToRegNum(const Token *token) {
   if (token->type != kRegister) {
     Error("Invalid token for regnum");
@@ -565,6 +246,7 @@ uint8_t ToRegNum(const Token *token) {
   // add check and arg to bits check.
   return token->value & 7;
 }
+*/
 
 #define PREFIX_REX 0x40
 #define PREFIX_REX_BITS_W 0x08
@@ -638,10 +320,105 @@ int64_t GetIntegerFromTokenStr(const TokenStr *ts) {
   return value;
 }
 
-typedef struct {
-  const char *mnemonic;
-  int (*parse)(const TokenStr *tokens, int num_of_tokens, int index);
-} MnemonicEntry;
+int ReadRegisterToken(
+    const TokenStr *tokens, int num_of_tokens, int index, RegisterInfo *reg_info)
+{
+  // retv: Next index or -1 if There is no register name at index.
+  if(index >= num_of_tokens) return -1;
+  for(int i = 0; register_name[i]; i++){
+    if(IsEqualTokenStr(&tokens[index], register_name[i])){
+      reg_info->number = i & 7;
+      reg_info->category = i >> 3;
+      return index + 1;
+    }
+  }
+  return -1;
+}
+
+Operand *ReadOperand(const TokenStr *tokens, int num_of_tokens, int *index, Operand *ope) {
+  if(*index >= num_of_tokens){
+    Error("Trying to read an operand beyond the end of tokens.");
+  }
+  if(~ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_info)){
+    (*index)++;
+    ope->type = kReg;
+    return ope;
+  }
+  return NULL;
+}
+
+//
+// Operator
+//
+
+int ParseOpEqual(const Operand *left, const Operand *right){
+  if (left->type == kReg && right->type == kReg) {
+    PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+    PutByte(OP_MOV_Ev_Gv);
+    PutByte(ModRM(3, right->reg_info.number & 7, left->reg_info.number & 7));
+    return 0;
+  } else if (left->type == kSegReg && right->type == kReg) {
+    PutByte(0x8e);
+    PutByte(ModRM(3, left->reg_info.number & 7, right->reg_info.number & 7));
+    return 0;
+  } else if (left->type == kReg && right->type == kImm) {
+    /*
+    if (IS_REGTYPE64(dst_value)) {
+      PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+      PutByte(OP_MOV_Ev_Iz);
+      PutByte(ModRM(3, 0, dst_value & 7));
+      for (int bi = 0; bi < 4; bi++) {
+        PutByte((src_value >> (8 * bi)) & 0xff);
+      }
+    } else if (IS_REGTYPE32(dst_value)) {
+      PutByte(OP_MOV_Ev_Iz);
+      PutByte(ModRM(3, 0, dst_value & 7));
+      for (int bi = 0; bi < 4; bi++) {
+        PutByte((src_value >> (8 * bi)) & 0xff);
+      }
+    } else if (IS_REGTYPE16(dst_value)) {
+      PutByte(0xb8 | (dst_value & 7));
+      for (int bi = 0; bi < 2; bi++) {
+        PutByte((src_value >> (8 * bi)) & 0xff);
+      }
+    } else {
+      Error("Not implemented dst reg type");
+    }
+    */
+    Error("Not implemented");
+  } else {
+    Error("Not implemented");
+  }
+  return 1;
+}
+
+int ParseOpXor(const Operand *left, const Operand *right){
+  if (left->type == kReg && right->type == kReg) {
+    PutByte(0x31);
+    PutByte(ModRM(3 /* 0b11 */, right->reg_info.number & 7, left->reg_info.number & 7));
+    return 0;
+  } else {
+    Error("Not implemented");
+  }
+  return 1;
+}
+
+const OpEntry op_table[] = {
+    {"=", ParseOpEqual},
+    {"^=", ParseOpXor},
+    {NULL, NULL}};
+
+const OpEntry *FindOp(const TokenStr *tokenstr) {
+  const OpEntry *op;
+  for (op = op_table; op->name; op++) {
+    if (IsEqualTokenStr(tokenstr, op->name)) return op;
+  }
+  return NULL;
+}
+
+//
+// Mnemonic
+//
 
 int ParseMnemonicJMP(const TokenStr *tokens, int num_of_tokens, int index) {
   index++;  // skip mnemonic
@@ -665,8 +442,32 @@ int ParseMnemonicNOP(const TokenStr *tokens, int num_of_tokens, int index) {
   return index;
 }
 
+int ParseMnemonicPUSH(const TokenStr *tokens, int num_of_tokens, int index) {
+  int mn_index = index;
+  index++;  // skip mnemonic
+  Operand ope;
+  if(ReadOperand(tokens, num_of_tokens, &index, &ope)){
+    if(ope.reg_info.category == kReg64Legacy || ope.reg_info.category == kReg64Low){
+      if(current_bits == 64){
+        PutByte(0x50 + ope.reg_info.number);
+      } else{
+        ErrorWithLine(&tokens[mn_index], "Not implemented in current bits"); 
+      }
+    } else{
+      ErrorWithLine(&tokens[mn_index], "Not implemented");
+    }
+  } else{
+    ErrorWithLine(&tokens[index], "Unexpected token %s",
+                    TmpTokenCStr(&tokens[index]));
+  }
+  return index;
+}
+
 const MnemonicEntry mnemonic_table[] = {
-    {"jmp", ParseMnemonicJMP}, {"nop", ParseMnemonicNOP}, {NULL, NULL}};
+    {"jmp", ParseMnemonicJMP},
+    {"nop", ParseMnemonicNOP},
+    {"push", ParseMnemonicPUSH},
+    {NULL, NULL}};
 
 const MnemonicEntry *FindMnemonic(const TokenStr *tokenstr) {
   const MnemonicEntry *mne;
@@ -676,12 +477,14 @@ const MnemonicEntry *FindMnemonic(const TokenStr *tokenstr) {
   return NULL;
 }
 
+//
+// Parser
+//
+
 int Parse(const TokenStr *tokens, int num_of_tokens, int index) {
   const MnemonicEntry *mne;
   while (index < num_of_tokens) {
-    if (tokens[index].type == kNewLine) {
-      index++;
-    } else if (IsEqualTokenStr(&tokens[index], ".")) {
+    if (IsEqualTokenStr(&tokens[index], ".")) {
       // directive
       index++;
       if (IsEqualTokenStr(&tokens[index], "bits")) {
@@ -753,10 +556,40 @@ int Parse(const TokenStr *tokens, int num_of_tokens, int index) {
                       TmpTokenCStr(&tokens[index]));
       }
     } else if ((mne = FindMnemonic(&tokens[index]))) {
+      printf("MN_EXPR\n");
       index = mne->parse(tokens, num_of_tokens, index);
     } else {
-      ErrorWithLine(&tokens[index], "Unexpected token %s",
+      printf("BIN_EXPR\n");
+      // <op_sentence> = <operand> <operator> <operand>
+      // <operand> = <register> | <immediate> | <memory_location>
+      // <memory_location> = <sib> | <segment_register><sib>
+      // <sib> =  [ <scale> * <index> + <base> ] |
+      //          [ <index> + <base> ] | 
+      //          [ <base> ]
+      // <scale> = 1 | 2 | 4 | 8
+      Operand left_ope;
+      if(!ReadOperand(tokens, num_of_tokens, &index, &left_ope)){
+        ErrorWithLine(&tokens[index], "Expected register name, got %s",
                     TmpTokenCStr(&tokens[index]));
+      }
+
+      const OpEntry *op;
+      if(!(op = FindOp(&tokens[index]))){
+        ErrorWithLine(&tokens[index], "Expected operator, got %s",
+                    TmpTokenCStr(&tokens[index]));
+      }
+      int op_index = index;
+      index++;
+
+      Operand right_ope;
+      if(!ReadOperand(tokens, num_of_tokens, &index, &right_ope)){
+        ErrorWithLine(&tokens[index], "Expected register name, got %s",
+                    TmpTokenCStr(&tokens[index]));
+      }
+      if(op->parse(&left_ope, &right_ope)){
+        ErrorWithLine(&tokens[op_index], "Failed to parse operator %s",
+                    TmpTokenCStr(&tokens[op_index]));
+      }
     }
   }
   return 0;
@@ -806,19 +639,13 @@ int main(int argc, char *argv[]) {
   // <operator> (<reg> | <imm> | <label>)* <option>*
   // <reg> <op> (<reg> | <imm>)
   // printf("%d tokens\n", tokens_count);
+#if 0
   for (int i = 0; i < token_str_list_used;) {
     TokenType type = token_types[i];
     const char *mn = tokens[i];
     int mn_idx = i++;
     // printf("%d: %s %d\n", i, mn, type);
     if (type == kMnemonic) {
-      if (strcmp(mn, "push") == 0) {
-        const char *reg = tokens[i++];
-        if (strcmp(reg, "rbp") == 0) {
-          PutByte(0x55);
-        } else {
-          Error("Not implemented");
-        }
       } else if (strcmp(mn, "mov") == 0) {
         const Token src = GetToken(i++);
         const Token dst = GetToken(i++);
@@ -920,47 +747,6 @@ int main(int argc, char *argv[]) {
       continue;
     } else if (type == kBinaryOperator) {
       if (strcmp(mn, "=") == 0) {
-        const char *src = tokens[mn_idx + 1];
-        TokenType src_type = token_types[mn_idx + 1];
-        uint64_t src_value = token_values[mn_idx + 1];
-        const char *dst = tokens[mn_idx - 1];
-        TokenType dst_type = token_types[mn_idx - 1];
-        uint64_t dst_value = token_values[mn_idx - 1];
-        printf("%s(%x.%llx) = %s(%x.%llx)\n", dst, dst_type, dst_value, src,
-               src_type, src_value);
-        if (dst_type == kRegister && src_type == kRegister) {
-          PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-          PutByte(OP_MOV_Ev_Gv);
-          PutByte(ModRM(3 /* 0b11 */, src_value & 7, dst_value & 7));
-        } else if (dst_type == kSegmentRegister && src_type == kRegister) {
-          PutByte(0x8e);
-          PutByte(ModRM(3 /* 0b11 */, dst_value & 7, src_value & 7));
-        } else if (dst_type == kRegister && src_type == kImmediate) {
-          if (IS_REGTYPE64(dst_value)) {
-            PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-            PutByte(OP_MOV_Ev_Iz);
-            PutByte(ModRM(3 /* 0b11 */, 0 /* 0b000 */, dst_value & 7));
-            for (int bi = 0; bi < 4; bi++) {
-              PutByte((src_value >> (8 * bi)) & 0xff);
-            }
-          } else if (IS_REGTYPE32(dst_value)) {
-            PutByte(OP_MOV_Ev_Iz);
-            PutByte(ModRM(3 /* 0b11 */, 0 /* 0b000 */, dst_value & 7));
-            for (int bi = 0; bi < 4; bi++) {
-              PutByte((src_value >> (8 * bi)) & 0xff);
-            }
-          } else if (IS_REGTYPE16(dst_value)) {
-            PutByte(0xb8 | (dst_value & 7));
-            for (int bi = 0; bi < 2; bi++) {
-              PutByte((src_value >> (8 * bi)) & 0xff);
-            }
-          } else {
-            Error("Not implemented dst reg type");
-          }
-        } else {
-          Error("Not implemented");
-        }
-        i++;
       } else if (strcmp(mn, "^=") == 0) {
         const Token dst = GetToken(i - 2);
         const Token src = GetToken(i++);
@@ -1004,4 +790,5 @@ int main(int argc, char *argv[]) {
   }
 
   return 0;
+#endif
 }

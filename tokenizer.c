@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdint.h>
 #include "asmium.h"
 
 void PrintTokenStr(const TokenStr *ts){
@@ -8,13 +9,11 @@ void PrintTokenStr(const TokenStr *ts){
 }
 void DebugPrintTokenStr(const TokenStr *ts){
   //printf("%s: ", TokenStrTypeStr[ts->type]);
-  if(ts->type == kWord || ts->type == kInteger || ts->type == kSymbol){
+  if(ts->type == kIdentifier || ts->type == kInteger || ts->type == kOperator){
     putchar('[');
     fflush(stdout);
     write(STDOUT_FILENO, ts->str, ts->len);
     putchar(']');
-  } else if(ts->type == kNewLine){
-    putchar('\n');
   } else if(ts->type == kString){
     putchar('"');
     fflush(stdout);
@@ -32,10 +31,11 @@ void DebugPrintTokens(const TokenStr *toke_str_list, int used){
   for(int i = 0; i < used; i++){
     if(line != toke_str_list[i].line){
       line = toke_str_list[i].line;
-      printf("%d\t", line);
+      printf("\n%d\t", line);
     }
     DebugPrintTokenStr(&toke_str_list[i]);
   }
+  putchar('\n');
 }
 
 #define IS_ALPHABET(c)  (('A' <= c && c <='Z') || ('a' <= c && c <='z'))
@@ -46,8 +46,9 @@ void Tokenize(TokenStr *toke_str_list, int size, int *used, const char *s)
 {
   int line_count = 1;
   while(*s){
-    if(*s != '\n' && (*s <= 0x20 || *s == 0x7f || (uint8_t)*s == 0xff)){
+    if((*s <= 0x20 || *s == 0x7f || (uint8_t)*s == 0xff)){
       // Skip non printable
+      if(*s == '\n') line_count++;
       s++;
     } else if(*s == '#' || (s[0] == '/' && s[1] == '/')){
       // Line comment
@@ -84,7 +85,7 @@ void Tokenize(TokenStr *toke_str_list, int size, int *used, const char *s)
       ts->line = line_count;
 
       if(IS_ALPHABET(*s)){
-        ts->type = kWord;
+        ts->type = kIdentifier;
         ts->str = s;
         while(IS_ALPHABET(*s) || IS_DIGIT(*s)){
           ts->len++;
@@ -113,11 +114,6 @@ void Tokenize(TokenStr *toke_str_list, int size, int *used, const char *s)
             s++;
           }
         }
-      } else if(*s == '\n'){
-        ts->type = kNewLine;
-        ts->str = s++;
-        ts->len = 1;
-        line_count++;
       } else if(*s == '"'){
         ts->type = kString;
         ts->str = ++s;
@@ -131,9 +127,13 @@ void Tokenize(TokenStr *toke_str_list, int size, int *used, const char *s)
         }
         s++;
       } else{
-        ts->type = kSymbol;
+        ts->type = kOperator;
         ts->str = s++;
         ts->len = 1;
+        if(ts->str[0] == '^' && ts->str[1] == '='){
+          s++;
+          ts->len++;
+        }
       }
     }
   }
