@@ -1,9 +1,9 @@
-_main:
+:_main
 	edi = 0
-loop:
-	inc edi
-	cmp 10 edi
-	jne loop:
+:loop
+	++edi
+	10 ? edi
+	jne :loop
 	rax = 0x2000001
 	syscall
 	retq

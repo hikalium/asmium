@@ -3,6 +3,9 @@ typedef enum {
   kInteger,
   kString,
   kOperator,
+  kLabel,
+  kMemOfsBegin,
+  kMemOfsEnd,
 } TokenStrType;
 
 typedef struct TOKEN_STR TokenStr;
@@ -20,6 +23,7 @@ typedef enum {
   kReg64Legacy,
   kReg64Low,
   kReg64Hi,
+  kSegReg,
 } RegisterType;
 
 typedef struct {
@@ -34,14 +38,16 @@ typedef struct {
 typedef enum {
   kImm,
   kReg,
-  kSegReg,
   kMem,
+  kLabelName,
 } OperandType;
 
 typedef struct {
   OperandType type;
-  const TokenStr *regToken;
-  RegisterInfo reg_info;
+  const TokenStr *token;  // kLabelName
+  RegisterInfo reg_info;  // kReg
+  int64_t imm;  // kImm
+  RegisterInfo reg_index;  // kMem
 } Operand;
 
 typedef struct {

@@ -1,44 +1,16 @@
-/*
-ALPHABET = [a-zA-Z]
-DIGIT = [0-9]
-
-WORD = ALPHABET(ALPHABET|DIGIT)*
-ASMIUM_SENTENCE =
-ASMIUM_SRC = ASMIUM_SENTENCE*
-*/
-
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "asmium.h"
 
 #define BUF_SIZE 4096
 #define BIN_BUF_SIZE 8192
 #define MAX_TOKENS 1024
 #define MAX_LABELS 16
-/*
-typedef enum {
-  kNotInToken,
-  kInToken,
-} TokenizerState;
 
-typedef enum {
-  kUnknown,
-  kImmediate,
-  kMnemonic,
-  kBinaryOperator,
-  kLabel,
-  kRegister,
-  kSegmentRegister,
-  kLineDelimiter,
-  kLineCommentMarker,
-  kDirective,
-  kAddressingBegin,
-  kAddressingEnd,
-} TokenType;
-*/
 const char *mnemonic_name[] = {"push", "pop",     "xor", "mov", "nop",
                                "retq", "syscall", "inc", "cmp", "jne",
                                "jmp",  "hlt",     "int", NULL};
@@ -52,34 +24,29 @@ const char *register_name[] = {
     "ax",  "cx",  "dx",  "bx",  "sp",  "bp",  "si",  "di",   // 16bits
     "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",  // 32bits
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",  // 64bits
-    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",  // 64bits
-    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",  // 64bits
+    "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",   // 64bits
+    "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",  // 64bits
+    "es",  "cs",  "ss",  "ds",  "fs",  "gs",  "",    "",     // seg
     NULL};
-#define IS_REGTYPE32(t) ((t >> 3) == 0)
-#define IS_REGTYPE64(t) ((t >> 3) == 1)
-#define IS_REGTYPE16(t) ((t >> 3) == 2)
+
+#define REG_rAX 0x0
+#define REG_rCX 0x1
+#define REG_rDX 0x2
+#define REG_rBX 0x3
+#define REG_rSP 0x4
+#define REG_rBP 0x5
+#define REG_rSI 0x6
+#define REG_rDI 0x7
+
 
 const char *segment_register_name[] = {"es", "cs", "ss", "ds",
                                        "fs", "gs", NULL};
-/*
-typedef struct {
-  int offset;
-  const char *str;
-  TokenType type;
-  uint64_t value;
-} Token;
-*/
-
 typedef struct {
   int offset_in_binary;
-  const char *name;
+  const TokenStr *token;
 } Label;
 
 char buf[BUF_SIZE + 16];
-//char *tokens[MAX_TOKENS];
-//TokenType token_types[MAX_TOKENS];
-//uint64_t token_values[MAX_TOKENS];
-//int tokens_count;
 
 uint8_t bin_buf[BIN_BUF_SIZE];
 size_t bin_buf_size;
@@ -91,6 +58,61 @@ int labels_count;
 
 FILE *dst_fp = NULL;
 int is_hex_mode = 0;
+
+//
+// TokenStr
+//
+
+TokenStr token_str_list[MAX_TOKENS];
+int token_str_list_used = 0;
+
+int IsEqualTokenStr(const TokenStr *ts, const char *s) {
+  int s_len = strlen(s);
+  if (s_len != ts->len) return 0;
+  return strncmp(ts->str, s, s_len) == 0;
+}
+int IsEqualTokenStrs(const TokenStr *tsa, const TokenStr *tsb) {
+  return (tsa->len == tsb->len && strncmp(tsa->str, tsb->str, tsa->len) == 0);
+}
+
+void CopyTokenStr(char *dst, const TokenStr *ts, int size) {
+  if (!(ts->len < size)) {
+    fprintf(stderr, "Not enough dst.\n");
+    exit(EXIT_FAILURE);
+  }
+  strncpy(dst, ts->str, ts->len);
+  dst[ts->len] = 0;
+}
+
+#define TmpTokenCStr_tmpstrsize (64 + 1)
+const char *TmpTokenCStr(const TokenStr *ts) {
+  static char tmpstr[TmpTokenCStr_tmpstrsize];
+  CopyTokenStr(tmpstr, ts, TmpTokenCStr_tmpstrsize);
+  return tmpstr;
+}
+
+void ExpectTokenStrType(const TokenStr *ts, TokenStrType type) {
+  if (ts->type != type) {
+    fprintf(stderr, "line %d: Expected type %d, got %d\n", ts->line, type,
+            ts->type);
+    exit(EXIT_FAILURE);
+  }
+}
+
+#define GetIntegerFromTokenStr_tmpstrsize (64 + 1)
+int64_t GetIntegerFromTokenStr(const TokenStr *ts) {
+  ExpectTokenStrType(ts, kInteger);
+  char tmpstr[GetIntegerFromTokenStr_tmpstrsize];
+  CopyTokenStr(tmpstr, ts, GetIntegerFromTokenStr_tmpstrsize);
+  char *p;
+  int64_t value = strtoll(tmpstr, &p, 0);
+  if (!(tmpstr[0] != '\0' && *p == '\0')) {
+    fprintf(stderr, "line %d: Not valid integer. '%s'\n", ts->line, tmpstr);
+    exit(EXIT_FAILURE);
+  }
+  // entire token is valid
+  return value;
+}
 
 void Error(const char *s) {
   fputs(s, stderr);
@@ -108,93 +130,27 @@ void ErrorWithLine(const TokenStr *ts, const char *fmt, ...) {
   exit(EXIT_FAILURE);
 }
 
-void AddLabel(const char *name, int offset_in_binary) {
-  printf("Label definition %s at ofs +%d\n", name, offset_in_binary);
+void AddLabel(const TokenStr *token, int offset_in_binary) {
   if (labels_count >= MAX_LABELS) {
     Error("Label table exceeded");
   }
+  printf("Label[%d] definition %s at ofs +%d\n", labels_count,
+         TmpTokenCStr(token), offset_in_binary);
   // TODO: Add label duplication check
   labels[labels_count].offset_in_binary = offset_in_binary;
-  labels[labels_count].name = name;
+  labels[labels_count].token = token;
   labels_count++;
 }
 
-int FindLabel(const char *name) {
+int FindLabel(const TokenStr *token) {
+  printf("Search LabelName %s\n", TmpTokenCStr(token));
   for (int i = 0; i < labels_count; i++) {
-    if (strcmp(labels[i].name, name) == 0) return i;
+    printf("LabelName[%d] = %s\n", i, TmpTokenCStr(labels[i].token));
+    if (IsEqualTokenStrs(labels[i].token, token)) return i;
   }
   return -1;
 }
-/*
-Token GetToken(int index) {
-  printf("%d\n", index);
-  printf("%d\n", tokens_count);
-  if (index >= tokens_count) {
-    Error("Trying to get token out of range");
-  }
-  Token token = {index, tokens[index], token_types[index], token_values[index]};
-  return token;
-}
-*/
-/*
-void PrintToken(const Token *token) {
-  printf("%s (%x.%llx) ", token->str, token->type, token->value);
-}
-*/
-/*
-int find(const char **list, const char *token) {
-  for (int i = 0; list[i]; i++) {
-    if (strcmp(token, list[i]) == 0) return i;
-  }
-  return -1;
-}
-*/
 
-/*
-int getTypeOfToken(const char *token, uint64_t *token_value) {
-  int idx;
-  TokenType type = kUnknown;
-  if (~(idx = find(mnemonic_name, token)))
-    type = kMnemonic;
-  else if (~(idx = find(op_name, token)))
-    type = kBinaryOperator;
-  else if (~(idx = find(register_name, token)))
-    type = kRegister;
-  else if (~(idx = find(segment_register_name, token)))
-    type = kSegmentRegister;
-  else if (~(idx = find(line_comment_marker, token)))
-    type = kLineCommentMarker;
-  else if (token[0] == '[' && !token[1])
-    type = kAddressingBegin;
-  else if (token[0] == ']' && !token[1])
-    type = kAddressingEnd;
-  else if (token[0] == '.')
-    type = kDirective;
-  else {
-    // check if it is immediate value
-    char *p;
-    uint64_t value = strtoq(token, &p, 0);
-    if (*token != '\0' && *p == '\0') {
-      // entire token is valid
-      if (token_value) {
-        *token_value = value;
-      }
-      return kImmediate;
-    }
-    // check if it is label
-    int len = strlen(token);
-    if (len > 0 && token[len - 1] == ':') {
-      // label
-      return kLabel;
-    }
-    return kUnknown;
-  }
-  if (token_value) {
-    *token_value = idx;
-  }
-  return type;
-}
-*/
 void PrintHeader(FILE *fp, uint32_t binsize) {
   *((uint32_t *)&mach_o_header[0x40]) = binsize;
   *((uint32_t *)&mach_o_header[0x50]) = binsize;
@@ -238,15 +194,11 @@ void PutByte(uint8_t byte) {
     fprintf(dst_fp, "%02X ", byte);
   }
 }
-/*
-uint8_t ToRegNum(const Token *token) {
-  if (token->type != kRegister) {
-    Error("Invalid token for regnum");
+void PutEndOfInstr() {
+  if (dst_fp && is_hex_mode) {
+    fprintf(dst_fp, "\n");
   }
-  // add check and arg to bits check.
-  return token->value & 7;
 }
-*/
 
 #define PREFIX_REX 0x40
 #define PREFIX_REX_BITS_W 0x08
@@ -256,6 +208,7 @@ uint8_t ToRegNum(const Token *token) {
 
 #define OP_Immediate_Grp1_Ev_Ib 0x83
 #define OP_MOV_Ev_Gv 0x89
+#define OP_MOV_Gb_Eb 0x8a
 #define OP_MOV_Ev_Iz 0xc7
 #define OP_INC_DEC_Grp5 0xff
 #define OP_POP_GReg 0x58 /* 0101 1rrr*/
@@ -263,70 +216,12 @@ uint8_t ToRegNum(const Token *token) {
 #define OP_Jcc_BASE 0x70
 #define COND_Jcc_NE 0x05
 
-#define REG_rAX 0x0
-#define REG_rCX 0x1
-#define REG_rDX 0x2
-#define REG_rBX 0x3
-#define REG_rSP 0x4
-#define REG_rBP 0x5
-#define REG_rSI 0x6
-#define REG_rDI 0x7
-
-TokenStr token_str_list[MAX_TOKENS];
-int token_str_list_used = 0;
-
-int IsEqualTokenStr(const TokenStr *ts, const char *s) {
-  int s_len = strlen(s);
-  if (s_len != ts->len) return 0;
-  return strncmp(ts->str, s, s_len) == 0;
-}
-
-void CopyTokenStr(char *dst, const TokenStr *ts, int size) {
-  if (!(ts->len < size)) {
-    fprintf(stderr, "Not enough dst.\n");
-    exit(EXIT_FAILURE);
-  }
-  strncpy(dst, ts->str, ts->len);
-  dst[ts->len] = 0;
-}
-
-#define TmpTokenCStr_tmpstrsize (64 + 1)
-const char *TmpTokenCStr(const TokenStr *ts) {
-  static char tmpstr[TmpTokenCStr_tmpstrsize];
-  CopyTokenStr(tmpstr, ts, TmpTokenCStr_tmpstrsize);
-  return tmpstr;
-}
-
-void ExpectTokenStrType(const TokenStr *ts, TokenStrType type) {
-  if (ts->type != type) {
-    fprintf(stderr, "line %d: Expected type %d, got %d\n", ts->line, type,
-            ts->type);
-    exit(EXIT_FAILURE);
-  }
-}
-
-#define GetIntegerFromTokenStr_tmpstrsize (64 + 1)
-int64_t GetIntegerFromTokenStr(const TokenStr *ts) {
-  ExpectTokenStrType(ts, kInteger);
-  char tmpstr[GetIntegerFromTokenStr_tmpstrsize];
-  CopyTokenStr(tmpstr, ts, GetIntegerFromTokenStr_tmpstrsize);
-  char *p;
-  int64_t value = strtoll(tmpstr, &p, 0);
-  if (!(tmpstr[0] != '\0' && *p == '\0')) {
-    fprintf(stderr, "line %d: Not valid integer. '%s'\n", ts->line, tmpstr);
-    exit(EXIT_FAILURE);
-  }
-  // entire token is valid
-  return value;
-}
-
-int ReadRegisterToken(
-    const TokenStr *tokens, int num_of_tokens, int index, RegisterInfo *reg_info)
-{
+int ReadRegisterToken(const TokenStr *tokens, int num_of_tokens, int index,
+                      RegisterInfo *reg_info) {
   // retv: Next index or -1 if There is no register name at index.
-  if(index >= num_of_tokens) return -1;
-  for(int i = 0; register_name[i]; i++){
-    if(IsEqualTokenStr(&tokens[index], register_name[i])){
+  if (index >= num_of_tokens) return -1;
+  for (int i = 0; register_name[i]; i++) {
+    if (IsEqualTokenStr(&tokens[index], register_name[i])) {
       reg_info->number = i & 7;
       reg_info->category = i >> 3;
       return index + 1;
@@ -335,14 +230,57 @@ int ReadRegisterToken(
   return -1;
 }
 
-Operand *ReadOperand(const TokenStr *tokens, int num_of_tokens, int *index, Operand *ope) {
-  if(*index >= num_of_tokens){
+Operand *ReadOperand(const TokenStr *tokens, int num_of_tokens, int *index,
+                     Operand *ope) {
+  if (*index >= num_of_tokens) {
     Error("Trying to read an operand beyond the end of tokens.");
   }
-  if(~ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_info)){
-    (*index)++;
-    ope->type = kReg;
-    return ope;
+  switch (tokens[*index].type) {
+    case kIdentifier:
+      ope->token = &tokens[*index];
+      if (~ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_info)) {
+        (*index)++;
+        ope->type = kReg;
+        return ope;
+      }
+      break;
+    case kInteger:
+      ope->token = &tokens[*index];
+      ope->imm = GetIntegerFromTokenStr(&tokens[*index]);
+      (*index)++;
+      ope->type = kImm;
+      return ope;
+    case kLabel:
+      ope->token = &tokens[*index];
+      (*index)++;
+      ope->type = kLabelName;
+      return ope;
+    case kMemOfsBegin:
+      ope->type = kMem;
+      (*index)++;
+      if (ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_index)) {
+        printf("Index Reg found: %s\n", TmpTokenCStr(&tokens[*index]));
+        (*index)++;
+      }
+      if(tokens[*index].type != kMemOfsEnd){
+        ErrorWithLine(&tokens[*index], "Expected ] but got %s", TmpTokenCStr(&tokens[*index]));
+      }
+      (*index)++;
+      return ope;
+    case kOperator:
+      if(IsEqualTokenStr(&tokens[*index], "-")){
+         (*index)++;
+         if(ReadOperand(tokens, num_of_tokens, index, ope)){
+           if(ope->type == kImm){
+              ope->imm = -ope->imm;
+              return ope;
+           }
+         }
+      }
+      break;
+    default:
+      // do nothing -> Error
+      break;
   }
   return NULL;
 }
@@ -351,52 +289,105 @@ Operand *ReadOperand(const TokenStr *tokens, int num_of_tokens, int *index, Oper
 // Operator
 //
 
-int ParseOpEqual(const Operand *left, const Operand *right){
+int ParseOpAssign(const Operand *left, const Operand *right) {
   if (left->type == kReg && right->type == kReg) {
-    PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-    PutByte(OP_MOV_Ev_Gv);
-    PutByte(ModRM(3, right->reg_info.number & 7, left->reg_info.number & 7));
-    return 0;
-  } else if (left->type == kSegReg && right->type == kReg) {
-    PutByte(0x8e);
-    PutByte(ModRM(3, left->reg_info.number & 7, right->reg_info.number & 7));
+    if (left->reg_info.category == kReg64Legacy &&
+        right->reg_info.category == kReg64Legacy) {
+      // greg64 = greg64
+      PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+      PutByte(OP_MOV_Ev_Gv);
+      PutByte(ModRM(3, right->reg_info.number, left->reg_info.number));
+    } else if (left->reg_info.category == kSegReg &&
+               right->reg_info.category == kReg16) {
+      // sreg = greg16
+      PutByte(0x8e);
+      PutByte(ModRM(3, left->reg_info.number, right->reg_info.number));
+    }
     return 0;
   } else if (left->type == kReg && right->type == kImm) {
-    /*
-    if (IS_REGTYPE64(dst_value)) {
-      PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-      PutByte(OP_MOV_Ev_Iz);
-      PutByte(ModRM(3, 0, dst_value & 7));
-      for (int bi = 0; bi < 4; bi++) {
-        PutByte((src_value >> (8 * bi)) & 0xff);
-      }
-    } else if (IS_REGTYPE32(dst_value)) {
-      PutByte(OP_MOV_Ev_Iz);
-      PutByte(ModRM(3, 0, dst_value & 7));
-      for (int bi = 0; bi < 4; bi++) {
-        PutByte((src_value >> (8 * bi)) & 0xff);
-      }
-    } else if (IS_REGTYPE16(dst_value)) {
-      PutByte(0xb8 | (dst_value & 7));
-      for (int bi = 0; bi < 2; bi++) {
-        PutByte((src_value >> (8 * bi)) & 0xff);
-      }
-    } else {
-      Error("Not implemented dst reg type");
+    switch (left->reg_info.category) {
+      case kReg64Legacy:
+        // case kReg64Low:
+        // case kReg64Hi:
+        PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+        PutByte(OP_MOV_Ev_Iz);
+        PutByte(ModRM(3, 0, left->reg_info.number));
+        // imm32
+        for (int bi = 0; bi < 4; bi++) {
+          PutByte((right->imm >> (8 * bi)) & 0xff);
+        }
+        return 0;
+      case kReg32:
+        PutByte(OP_MOV_Ev_Iz);
+        PutByte(ModRM(3, 0, left->reg_info.number));
+        // imm32
+        for (int bi = 0; bi < 4; bi++) {
+          PutByte((right->imm >> (8 * bi)) & 0xff);
+        }
+        return 0;
+      case kReg16:
+        PutByte(0xb8 | left->reg_info.number);
+        // imm16
+        for (int bi = 0; bi < 2; bi++) {
+          PutByte((right->imm >> (8 * bi)) & 0xff);
+        }
+        return 0;
+      default:
+        break;
     }
-    */
-    Error("Not implemented");
+  } else if (left->type == kReg && right->type == kMem) {
+    // reg = [mem location]
+    if(left->reg_info.category == kReg8){
+      // 2.1.5 Table 2-1. 16-Bit Addressing Forms with the ModR/M Byte
+      if(right->reg_index.number == REG_rSI){
+        PutByte(OP_MOV_Gb_Eb);
+        PutByte(ModRM(0, left->reg_info.number, 4));
+        return 0;
+      }
+    } 
+  }
+  Error("Not implemented");
+  return 1;
+}
+
+int ParseOpXor(const Operand *left, const Operand *right) {
+  if (left->type == kReg && right->type == kReg) {
+    PutByte(0x31);
+    PutByte(ModRM(3 /* 0b11 */, right->reg_info.number & 7,
+                  left->reg_info.number & 7));
+    return 0;
   } else {
     Error("Not implemented");
   }
   return 1;
 }
 
-int ParseOpXor(const Operand *left, const Operand *right){
+int ParseOpCmp(const Operand *left, const Operand *right) {
+  /*
   if (left->type == kReg && right->type == kReg) {
-    PutByte(0x31);
-    PutByte(ModRM(3 /* 0b11 */, right->reg_info.number & 7, left->reg_info.number & 7));
+    PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+    PutByte(OP_MOV_Ev_Gv);
+    PutByte(ModRM(3, right->reg_info.number, left->reg_info.number));
     return 0;
+  } else if (left->type == kSegReg && right->type == kReg) {
+    PutByte(0x8e);
+    PutByte(ModRM(3, left->reg_info.number, right->reg_info.number));
+    return 0;
+  } else */
+  if (left->type == kImm && right->type == kReg) {
+    switch (right->reg_info.category) {
+      case kReg32:
+        PutByte(OP_Immediate_Grp1_Ev_Ib);
+        PutByte(ModRM(3, 7, right->reg_info.number));
+        if (left->imm & ~0xff) {
+          Error("Not implemented imm larger than 8bits");
+        }
+        PutByte(left->imm & 0xff);
+        return 0;
+      default:
+        break;
+    }
+    Error("Not implemented imm");
   } else {
     Error("Not implemented");
   }
@@ -404,9 +395,7 @@ int ParseOpXor(const Operand *left, const Operand *right){
 }
 
 const OpEntry op_table[] = {
-    {"=", ParseOpEqual},
-    {"^=", ParseOpXor},
-    {NULL, NULL}};
+    {"=", ParseOpAssign}, {"^=", ParseOpXor}, {"?", ParseOpCmp}, {NULL, NULL}};
 
 const OpEntry *FindOp(const TokenStr *tokenstr) {
   const OpEntry *op;
@@ -422,14 +411,35 @@ const OpEntry *FindOp(const TokenStr *tokenstr) {
 
 int ParseMnemonicJMP(const TokenStr *tokens, int num_of_tokens, int index) {
   index++;  // skip mnemonic
-  if (tokens[index].type == kInteger) {
-    int64_t rel_offset = GetIntegerFromTokenStr(&tokens[index]);
-    index++;
+
+  Operand jmp_target;
+  if (!ReadOperand(tokens, num_of_tokens, &index, &jmp_target)) {
+    ErrorWithLine(&tokens[index], "Expected operand, got %s",
+                  TmpTokenCStr(&tokens[index]));
+  }
+  if(jmp_target.type == kImm){
+    int64_t rel_offset = jmp_target.imm;
     if ((rel_offset & ~127) && ~(rel_offset | 127)) {
       Error("Offset out of bound (not impleented yet)");
     }
     PutByte(0xeb);
     PutByte(rel_offset & 0xff);
+  } else {
+    ErrorWithLine(&tokens[index], "Unexpected type of operand");
+  }
+  return index;
+}
+
+int ParseMnemonicINT(const TokenStr *tokens, int num_of_tokens, int index) {
+  index++;  // skip mnemonic
+  if (tokens[index].type == kInteger) {
+    int64_t int_num = GetIntegerFromTokenStr(&tokens[index]);
+    index++;
+    if (int_num < 0 || 0xff < int_num) {
+      Error("Invalid int number");
+    }
+    PutByte(0xcd);
+    PutByte(int_num & 0xff);
   } else {
     ErrorWithLine(&tokens[index], "Unexpected operand");
   }
@@ -442,32 +452,131 @@ int ParseMnemonicNOP(const TokenStr *tokens, int num_of_tokens, int index) {
   return index;
 }
 
+int ParseMnemonicRETQ(const TokenStr *tokens, int num_of_tokens, int index) {
+  index++;  // skip mnemonic
+  PutByte(0xc3);
+  return index;
+}
+
+int ParseMnemonicHLT(const TokenStr *tokens, int num_of_tokens, int index) {
+  index++;  // skip mnemonic
+  PutByte(0xf4);
+  return index;
+}
+
+int ParseMnemonicSYSCALL(const TokenStr *tokens, int num_of_tokens, int index) {
+  index++;  // skip mnemonic
+  PutByte(0x0f);
+  PutByte(0x05);
+  return index;
+}
+
+int ParseMnemonicINC(const TokenStr *tokens, int num_of_tokens, int index) {
+  int mn_index = index;
+  index++;  // skip mnemonic
+  Operand ope;
+  if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
+    if (ope.reg_info.category == kReg32) {
+      if (current_bits == 64) {
+        PutByte(OP_INC_DEC_Grp5);
+        PutByte(ModRM(3, 0, ope.reg_info.number));
+      } else {
+        ErrorWithLine(&tokens[mn_index], "Not implemented in current bits");
+      }
+    } else {
+      ErrorWithLine(&tokens[mn_index], "Not implemented");
+    }
+  } else {
+    ErrorWithLine(&tokens[index], "Unexpected token %s",
+                  TmpTokenCStr(&tokens[index]));
+  }
+  return index;
+}
 int ParseMnemonicPUSH(const TokenStr *tokens, int num_of_tokens, int index) {
   int mn_index = index;
   index++;  // skip mnemonic
   Operand ope;
-  if(ReadOperand(tokens, num_of_tokens, &index, &ope)){
-    if(ope.reg_info.category == kReg64Legacy || ope.reg_info.category == kReg64Low){
-      if(current_bits == 64){
+  if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
+    if (ope.reg_info.category == kReg64Legacy ||
+        ope.reg_info.category == kReg64Low) {
+      if (current_bits == 64) {
         PutByte(0x50 + ope.reg_info.number);
-      } else{
-        ErrorWithLine(&tokens[mn_index], "Not implemented in current bits"); 
+      } else {
+        ErrorWithLine(&tokens[mn_index], "Not implemented in current bits");
       }
-    } else{
+    } else {
       ErrorWithLine(&tokens[mn_index], "Not implemented");
     }
-  } else{
+  } else {
     ErrorWithLine(&tokens[index], "Unexpected token %s",
-                    TmpTokenCStr(&tokens[index]));
+                  TmpTokenCStr(&tokens[index]));
   }
   return index;
 }
 
-const MnemonicEntry mnemonic_table[] = {
-    {"jmp", ParseMnemonicJMP},
-    {"nop", ParseMnemonicNOP},
-    {"push", ParseMnemonicPUSH},
-    {NULL, NULL}};
+int ParseMnemonicPOP(const TokenStr *tokens, int num_of_tokens, int index) {
+  int mn_index = index;
+  index++;  // skip mnemonic
+  Operand ope;
+  if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
+    if (ope.reg_info.category == kReg64Legacy ||
+        ope.reg_info.category == kReg64Low) {
+      if (current_bits == 64) {
+        PutByte(0x58 + ope.reg_info.number);
+      } else {
+        ErrorWithLine(&tokens[mn_index], "Not implemented in current bits");
+      }
+    } else {
+      ErrorWithLine(&tokens[mn_index], "Not implemented");
+    }
+  } else {
+    ErrorWithLine(&tokens[index], "Unexpected token %s",
+                  TmpTokenCStr(&tokens[index]));
+  }
+  return index;
+}
+
+int ParseMnemonicJNE(const TokenStr *tokens, int num_of_tokens, int index) {
+  int mn_index = index;
+  index++;  // skip mnemonic
+  Operand ope;
+  if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
+    if (ope.type == kLabelName) {
+      int label_index = FindLabel(ope.token);
+      if (label_index == -1) {
+        Error("Label not found (not implemented yet)");
+      }
+      printf("Label[%d] %s found (ofs=%d)\n", label_index,
+             TmpTokenCStr(labels[label_index].token),
+             labels[label_index].offset_in_binary);
+      int32_t rel_offset =
+          labels[label_index].offset_in_binary - (bin_buf_size + 2);
+      if ((rel_offset & ~127) && ~(rel_offset | 127)) {
+        Error("Offset out of bound (not impleented yet)");
+      }
+      PutByte(OP_Jcc_BASE | COND_Jcc_NE);
+      PutByte(rel_offset & 0xff);
+    } else {
+      ErrorWithLine(&tokens[mn_index], "Not implemented jmp target");
+    }
+  } else {
+    ErrorWithLine(&tokens[index], "Unexpected token %s",
+                  TmpTokenCStr(&tokens[index]));
+  }
+  return index;
+}
+
+const MnemonicEntry mnemonic_table[] = {{"jmp", ParseMnemonicJMP},
+                                        {"nop", ParseMnemonicNOP},
+                                        {"push", ParseMnemonicPUSH},
+                                        {"pop", ParseMnemonicPOP},
+                                        {"retq", ParseMnemonicRETQ},
+                                        {"syscall", ParseMnemonicSYSCALL},
+                                        {"++", ParseMnemonicINC},
+                                        {"jne", ParseMnemonicJNE},
+                                        {"int", ParseMnemonicINT},
+                                        {"hlt", ParseMnemonicHLT},
+                                        {NULL, NULL}};
 
 const MnemonicEntry *FindMnemonic(const TokenStr *tokenstr) {
   const MnemonicEntry *mne;
@@ -484,7 +593,9 @@ const MnemonicEntry *FindMnemonic(const TokenStr *tokenstr) {
 int Parse(const TokenStr *tokens, int num_of_tokens, int index) {
   const MnemonicEntry *mne;
   while (index < num_of_tokens) {
-    if (IsEqualTokenStr(&tokens[index], ".")) {
+    if (tokens[index].type == kLabel) {
+      AddLabel(&tokens[index++], bin_buf_size);
+    } else if (IsEqualTokenStr(&tokens[index], ".")) {
       // directive
       index++;
       if (IsEqualTokenStr(&tokens[index], "bits")) {
@@ -555,41 +666,44 @@ int Parse(const TokenStr *tokens, int num_of_tokens, int index) {
         ErrorWithLine(&tokens[index], "No directive named %s found.",
                       TmpTokenCStr(&tokens[index]));
       }
+      PutEndOfInstr();
     } else if ((mne = FindMnemonic(&tokens[index]))) {
       printf("MN_EXPR\n");
       index = mne->parse(tokens, num_of_tokens, index);
+      PutEndOfInstr();
     } else {
       printf("BIN_EXPR\n");
       // <op_sentence> = <operand> <operator> <operand>
       // <operand> = <register> | <immediate> | <memory_location>
       // <memory_location> = <sib> | <segment_register><sib>
       // <sib> =  [ <scale> * <index> + <base> ] |
-      //          [ <index> + <base> ] | 
+      //          [ <index> + <base> ] |
       //          [ <base> ]
       // <scale> = 1 | 2 | 4 | 8
       Operand left_ope;
-      if(!ReadOperand(tokens, num_of_tokens, &index, &left_ope)){
-        ErrorWithLine(&tokens[index], "Expected register name, got %s",
-                    TmpTokenCStr(&tokens[index]));
+      if (!ReadOperand(tokens, num_of_tokens, &index, &left_ope)) {
+        ErrorWithLine(&tokens[index], "Expected operand, got %s",
+                      TmpTokenCStr(&tokens[index]));
       }
 
       const OpEntry *op;
-      if(!(op = FindOp(&tokens[index]))){
+      if (!(op = FindOp(&tokens[index]))) {
         ErrorWithLine(&tokens[index], "Expected operator, got %s",
-                    TmpTokenCStr(&tokens[index]));
+                      TmpTokenCStr(&tokens[index]));
       }
       int op_index = index;
       index++;
 
       Operand right_ope;
-      if(!ReadOperand(tokens, num_of_tokens, &index, &right_ope)){
-        ErrorWithLine(&tokens[index], "Expected register name, got %s",
-                    TmpTokenCStr(&tokens[index]));
+      if (!ReadOperand(tokens, num_of_tokens, &index, &right_ope)) {
+        ErrorWithLine(&tokens[index], "Expected operand, got %s",
+                      TmpTokenCStr(&tokens[index]));
       }
-      if(op->parse(&left_ope, &right_ope)){
+      if (op->parse(&left_ope, &right_ope)) {
         ErrorWithLine(&tokens[op_index], "Failed to parse operator %s",
-                    TmpTokenCStr(&tokens[op_index]));
+                      TmpTokenCStr(&tokens[op_index]));
       }
+      PutEndOfInstr();
     }
   }
   return 0;
@@ -634,6 +748,12 @@ int main(int argc, char *argv[]) {
 
   Parse(token_str_list, token_str_list_used, 0);
 
+  if (!is_hex_mode) {
+    PrintHeader(dst_fp, bin_buf_size);
+    PrintBody(dst_fp);
+    PrintFooter(dst_fp);
+  }
+
   return 0;
   // <label>
   // <operator> (<reg> | <imm> | <label>)* <option>*
@@ -654,46 +774,6 @@ int main(int argc, char *argv[]) {
         PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
         PutByte(OP_MOV_Ev_Gv);
         PutByte(ModRM(3 /* 0b11 */, ToRegNum(&src), ToRegNum(&dst)));
-      } else if (strcmp(mn, "inc") == 0) {
-        const Token reg = GetToken(i++);
-        PutByte(OP_INC_DEC_Grp5);
-        PutByte(ModRM(3 /*0b11*/, 0 /* 0b000 */, ToRegNum(&reg)));
-      } else if (strcmp(mn, "cmp") == 0) {
-        const Token left = GetToken(i++);
-        const Token right = GetToken(i++);
-        //
-        // printf("cmp ");
-        PrintToken(&left);
-        PrintToken(&right);
-        putchar('\n');
-        //
-        if (left.type == kImmediate && right.type == kRegister) {
-          // PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-          PutByte(OP_Immediate_Grp1_Ev_Ib);
-          PutByte(ModRM(3 /* 0b11 */, 7 /* 0b111 */, ToRegNum(&right)));
-          if (left.value & ~0xff) {
-            Error("Not implemented imm larger than 8bits");
-          }
-          PutByte(left.value & 0xff);
-        } else {
-          Error("Not implemented");
-        }
-      } else if (strcmp(mn, "int") == 0) {
-        const Token target = GetToken(i++);
-        //
-        // printf("jne ");
-        PrintToken(&target);
-        putchar('\n');
-        //
-        if (target.type == kImmediate) {
-          if (0xff < target.value) {
-            Error("Invalid int number");
-          }
-          PutByte(0xcd);
-          PutByte(target.value & 0xff);
-        } else {
-          Error("Not implemented");
-        }
       } else if (strcmp(mn, "jmp") == 0) {
         const Token target = GetToken(i++);
         //
@@ -701,28 +781,6 @@ int main(int argc, char *argv[]) {
         PrintToken(&target);
         putchar('\n');
         //
-      } else if (strcmp(mn, "jne") == 0) {
-        const Token target = GetToken(i++);
-        //
-        // printf("jne ");
-        PrintToken(&target);
-        putchar('\n');
-        //
-        if (target.type == kLabel) {
-          int label_index = FindLabel(target.str);
-          if (label_index == -1) {
-            Error("Label not found (not implemented yet)");
-          }
-          int32_t rel_offset =
-              labels[label_index].offset_in_binary - (bin_buf_size + 2);
-          if ((rel_offset & ~127) && ~(rel_offset | 127)) {
-            Error("Offset out of bound (not impleented yet)");
-          }
-          PutByte(OP_Jcc_BASE | COND_Jcc_NE);
-          PutByte(rel_offset & 0xff);
-        } else {
-          Error("Not implemented");
-        }
       } else if (strcmp(mn, "xor") == 0) {
         const Token src = GetToken(i++);
         const Token dst = GetToken(i++);
@@ -735,8 +793,6 @@ int main(int argc, char *argv[]) {
         PutByte(0xc3);
       } else if (strcmp(mn, "nop") == 0) {
         PutByte(0x90);
-      } else if (strcmp(mn, "hlt") == 0) {
-        PutByte(0xf4);
       } else if (strcmp(mn, "syscall") == 0) {
         PutByte(0x0f);
         PutByte(0x05);
@@ -755,9 +811,6 @@ int main(int argc, char *argv[]) {
       } else {
         Error("Not implemented");
       }
-      continue;
-    } else if (type == kLabel) {
-      AddLabel(mn, bin_buf_size);
       continue;
     } else if (type == kRegister || type == kSegmentRegister) {
       // kRegister appears only prior to kBinaryOperator
@@ -781,12 +834,6 @@ int main(int argc, char *argv[]) {
     }
     printf("> %s (type: %d)\n", mn, type);
     Error("Unexpected token");
-  }
-
-  if (!is_hex_mode) {
-    PrintHeader(dst_fp, bin_buf_size);
-    PrintBody(dst_fp);
-    PrintFooter(dst_fp);
   }
 
   return 0;

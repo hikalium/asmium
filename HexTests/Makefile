@@ -19,7 +19,8 @@ clean:
 	@diff -u $*_hex_expected.txt $*_hex.txt && echo "PASS $*"
 
 %_hex.txt : %.s Makefile $(ASMIUM)
-	$(ASMIUM) --hex -o $*_hex.txt $*.s
+	$(ASMIUM) --hex -o $*_hex_org.txt $*.s
+	cat $*_hex_org.txt | grep -v '^$$' > $*_hex.txt
 
 run: helloos_hex.txt
 	cat helloos_hex.txt | xxd -r -p > helloos.img
