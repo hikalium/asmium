@@ -1,4 +1,4 @@
-SRCS=asmium.c tokenizer.c gen_macho.c
+SRCS=asmium.c tokenizer.c gen_macho.c gen_elf64.c
 HEADERS=asmium.h
 CFLAGS=-Wall -Wpedantic
 

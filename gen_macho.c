@@ -1,5 +1,36 @@
 #include <stdint.h>
+#include <stdio.h>
+
 #include "asmium.h"
+
+extern uint8_t mach_o_header[0x130];
+extern uint8_t mach_o_footer[0x18];
+
+void WriteObjFileForMachO(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
+{
+  // header
+  *((uint32_t *)&mach_o_header[0x40]) = bin_size;
+  *((uint32_t *)&mach_o_header[0x50]) = bin_size;
+  *((uint32_t *)&mach_o_header[0x90]) = bin_size;
+
+  uint32_t binsize_4b_aligned = (bin_size + 0x03) & ~0x03;
+  *((uint32_t *)&mach_o_header[0xd0]) = binsize_4b_aligned + 0x130;
+  *((uint32_t *)&mach_o_header[0xd8]) = binsize_4b_aligned + 0x140;
+  for (int i = 0; i < 0x130; i++) {
+    fputc(mach_o_header[i], fp);
+  }
+  // body
+  int i;
+  for (i = 0; i < bin_size; i++) {
+    fputc(bin_buf[i], fp);
+  }
+  for (; i & 0x3; i++) {
+    fputc(0x00, fp);
+  }
+  for (int i = 0; i < 0x18; i++) {
+    fputc(mach_o_footer[i], fp);
+  }
+}
 
 uint8_t mach_o_header[0x130] = {
     0xcf,

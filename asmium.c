@@ -151,38 +151,6 @@ int FindLabel(const TokenStr *token) {
   return -1;
 }
 
-void PrintHeader(FILE *fp, uint32_t binsize) {
-  *((uint32_t *)&mach_o_header[0x40]) = binsize;
-  *((uint32_t *)&mach_o_header[0x50]) = binsize;
-  *((uint32_t *)&mach_o_header[0x90]) = binsize;
-
-  uint32_t binsize_4b_aligned = (binsize + 0x03) & ~0x03;
-  *((uint32_t *)&mach_o_header[0xd0]) = binsize_4b_aligned + 0x130;
-  *((uint32_t *)&mach_o_header[0xd8]) = binsize_4b_aligned + 0x140;
-  for (int i = 0; i < 0x130; i++) {
-    fputc(mach_o_header[i], fp);
-  }
-}
-
-void PrintBody(FILE *fp) {
-  int i;
-  for (i = 0; i < bin_buf_size; i++) {
-    fputc(bin_buf[i], fp);
-  }
-  if (!is_hex_mode) {
-    // 4-byte align
-    for (; i & 0x3; i++) {
-      fputc(0x00, fp);
-    }
-  }
-}
-
-void PrintFooter(FILE *fp) {
-  for (int i = 0; i < 0x18; i++) {
-    fputc(mach_o_footer[i], fp);
-  }
-}
-
 uint8_t ModRM(uint8_t mod, uint8_t r, uint8_t r_m) {
   return (mod << 6) | (r << 3) | r_m;
 }
@@ -749,9 +717,8 @@ int main(int argc, char *argv[]) {
   Parse(token_str_list, token_str_list_used, 0);
 
   if (!is_hex_mode) {
-    PrintHeader(dst_fp, bin_buf_size);
-    PrintBody(dst_fp);
-    PrintFooter(dst_fp);
+    //WriteObjFileForMachO(dst_fp, bin_buf, bin_buf_size);
+    WriteObjFileForELF64(dst_fp, bin_buf, bin_buf_size);
   }
 
   return 0;

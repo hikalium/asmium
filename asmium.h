@@ -60,10 +60,17 @@ typedef struct {
   int (*parse)(const TokenStr *tokens, int num_of_tokens, int index);
 } MnemonicEntry;
 
+typedef struct {
+  const char *name;
+} FormatWriter;
+
+
+void Error(const char *s);
 void DebugPrintTokens(const TokenStr *toke_str_list, int used);
 void Tokenize(TokenStr *toke_str_list, int size, int *used, const char *s);
 
-// gen_macho.c
-extern uint8_t mach_o_header[0x130];
-extern uint8_t mach_o_footer[0x18];
+// @gen_elf64.c
+void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size);
 
+// @gen_macho.c
+void WriteObjFileForMachO(FILE *fp, uint8_t *bin_buf, uint32_t bin_size);
