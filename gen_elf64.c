@@ -1,26 +1,23 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "asmium.h"
 
-void Put16(uint16_t v, FILE *fp)
-{
-  for(int i = 0; i < 2; i++){
+void Put16(uint16_t v, FILE *fp) {
+  for (int i = 0; i < 2; i++) {
     fputc((v >> (i * 8)) & 0xff, fp);
   }
 }
 
-void Put32(uint32_t v, FILE *fp)
-{
-  for(int i = 0; i < 4; i++){
+void Put32(uint32_t v, FILE *fp) {
+  for (int i = 0; i < 4; i++) {
     fputc((v >> (i * 8)) & 0xff, fp);
   }
 }
 
-void Put64(uint64_t v, FILE *fp)
-{
-  for(int i = 0; i < 8; i++){
+void Put64(uint64_t v, FILE *fp) {
+  for (int i = 0; i < 8; i++) {
     fputc((v >> (i * 8)) & 0xff, fp);
   }
 }
@@ -32,10 +29,10 @@ typedef enum {
 } SymbolType;
 
 typedef struct {
-  uint32_t name_idx;  // Ofs in .strtab
+  uint32_t name_idx; // Ofs in .strtab
   uint16_t type;
   uint16_t index; // Index of Shdr
-  uint64_t size; // ofs?
+  uint64_t size;  // ofs?
   uint64_t value; // ofs?
 } SymbolTableEntry;
 
@@ -64,18 +61,16 @@ typedef struct {
   uint64_t entsize;
 } SectionHeaderEntry;
 
-void PutSectionHeaderEntry(const SectionHeaderEntry *shdr, FILE *fp)
-{
+void PutSectionHeaderEntry(const SectionHeaderEntry *shdr, FILE *fp) {
   const uint8_t *data = (const uint8_t *)shdr;
-  for(int i = 0; i < sizeof(SectionHeaderEntry); i++){
+  for (int i = 0; i < sizeof(SectionHeaderEntry); i++) {
     fputc(data[i], fp);
   }
 }
 
-void PutSymbolTableEntry(const SymbolTableEntry *symbol, FILE *fp)
-{
+void PutSymbolTableEntry(const SymbolTableEntry *symbol, FILE *fp) {
   const uint8_t *data = (const uint8_t *)symbol;
-  for(int i = 0; i < sizeof(SymbolTableEntry); i++){
+  for (int i = 0; i < sizeof(SymbolTableEntry); i++) {
     fputc(data[i], fp);
   }
 }
@@ -95,14 +90,16 @@ int symbol_list_used = 0;
 
 void AddStrToBuf(char *buf, int *buf_used, const char *s) {
   int len = strlen(s);
-  if(*buf_used + len + 1 >= STRBUF_SIZE){
+  if (*buf_used + len + 1 >= STRBUF_SIZE) {
     Error("exceeded STRBUF_SIZE");
   }
   strcpy(&buf[*buf_used], s);
   *buf_used += (len + 1);
 }
 
-SectionHeaderEntry *AddSection(const char *name, uint32_t type, uint64_t flags, uint64_t addr, uint64_t size_in_file, uint64_t size_in_mem){
+SectionHeaderEntry *AddSection(const char *name, uint32_t type, uint64_t flags,
+                               uint64_t addr, uint64_t size_in_file,
+                               uint64_t size_in_mem) {
   int name_idx = shstrtab_buf_used;
   AddStrToBuf(shstrtab_buf, &shstrtab_buf_used, name);
 
@@ -117,7 +114,8 @@ SectionHeaderEntry *AddSection(const char *name, uint32_t type, uint64_t flags, 
   return &shdr_list[shdr_list_used++];
 }
 
-SymbolTableEntry *AddSymbol(const char *name, uint16_t type, uint16_t index, uint64_t value){
+SymbolTableEntry *AddSymbol(const char *name, uint16_t type, uint16_t index,
+                            uint64_t value) {
   int name_idx = strtab_buf_used;
   AddStrToBuf(strtab_buf, &strtab_buf_used, name);
 
@@ -128,8 +126,7 @@ SymbolTableEntry *AddSymbol(const char *name, uint16_t type, uint16_t index, uin
   return &symbol_list[symbol_list_used++];
 }
 
-void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
-{
+void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size) {
   int i;
   size_t bin_size_aligned = (bin_size + 0xf) & ~0xf;
   printf("bin_size_aligned = 0x%lX\n", bin_size_aligned);
@@ -141,7 +138,8 @@ void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
   AddSymbol("main", kGlobalNoType, 1, 0);
 
   AddSection("", 0, 0, 0, 0, 0);
-  AddSection(".text", kProgBits, kAllocated | kExecutable, 0, bin_size_aligned, 0);
+  AddSection(".text", kProgBits, kAllocated | kExecutable, 0, bin_size_aligned,
+             0);
   AddSection(".data", kProgBits, kAllocated | kWritable, 0, 0, 0);
   AddSection(".bss", kNoBits, kAllocated | kWritable, 0, 0, 0);
 
@@ -168,7 +166,7 @@ void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
 
   // recalc ofsets of shdrs
   uint64_t ofs = 0x40;
-  for(int i = 0; i < shdr_list_used; i++){
+  for (int i = 0; i < shdr_list_used; i++) {
     shdr_list[i].offset = ofs;
     ofs += shdr_list[i].size_in_file;
   }
@@ -192,7 +190,7 @@ void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
   fputc(0x01, fp);
   fputc(0x00, fp);
   fputc(0x00, fp);
-  for(i = 0; i < 7; i++){
+  for (i = 0; i < 7; i++) {
     fputc(0x00, fp);
   }
 
@@ -208,27 +206,27 @@ void WriteObjFileForELF64(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
   Put16(0x0040, fp);
   Put16(0x0000, fp);
   Put16(0x0000, fp);
-  Put16(0x0040, fp);  // size of shdr entry (fixed)
+  Put16(0x0040, fp);          // size of shdr entry (fixed)
   Put16(shdr_list_used, fp);  // number of shdrs
-  Put16(idx_of_shstrtab, fp);  // index of shstrtab in shdr array
+  Put16(idx_of_shstrtab, fp); // index of shstrtab in shdr array
 
   for (i = 0; i < bin_size_aligned; i++) {
     fputc(bin_buf[i], fp);
   }
 
-  for(i = 0; i < shstrtab_size_aligned; i++){
+  for (i = 0; i < shstrtab_size_aligned; i++) {
     fputc(shstrtab_buf[i], fp);
   }
-  
-  for(i = 0; i < strtab_size_aligned; i++){
+
+  for (i = 0; i < strtab_size_aligned; i++) {
     fputc(strtab_buf[i], fp);
   }
 
-  for(i = 0; i < symbol_list_used; i++){
+  for (i = 0; i < symbol_list_used; i++) {
     PutSymbolTableEntry(&symbol_list[i], fp);
   }
 
-  for(i = 0; i < shdr_list_used; i++){
+  for (i = 0; i < shdr_list_used; i++) {
     PutSectionHeaderEntry(&shdr_list[i], fp);
   }
 }

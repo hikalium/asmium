@@ -12,7 +12,7 @@ test: $(TEST_ASMIUM_OUT) $(TEST_S_OUT) $(TEST_ASMIUM_BIN) $(TEST_S_BIN)
 	make $(TEST_TARGETS)
 
 clean:
-	-rm *.bin *.o
+	-rm -r *.bin *.o
 
 %.test : %_asmium.bin %.bin Makefile
 	@- ./$*.bin; ./test.sh ./$*_asmium.bin $$?

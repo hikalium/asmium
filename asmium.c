@@ -20,13 +20,13 @@ const char *op_name[] = {"=", "^=", NULL};
 const char *line_comment_marker[] = {";", NULL};
 
 const char *register_name[] = {
-    "al",  "cl",  "dl",  "bl",  "ah",  "ch",  "dh",  "bh",   // 8bits
-    "ax",  "cx",  "dx",  "bx",  "sp",  "bp",  "si",  "di",   // 16bits
-    "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",  // 32bits
-    "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",  // 64bits
-    "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",   // 64bits
-    "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",  // 64bits
-    "es",  "cs",  "ss",  "ds",  "fs",  "gs",  "",    "",     // seg
+    "al",  "cl",  "dl",  "bl",  "ah",  "ch",  "dh",  "bh",  // 8bits
+    "ax",  "cx",  "dx",  "bx",  "sp",  "bp",  "si",  "di",  // 16bits
+    "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi", // 32bits
+    "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi", // 64bits
+    "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",  // 64bits
+    "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15", // 64bits
+    "es",  "cs",  "ss",  "ds",  "fs",  "gs",  "",    "",    // seg
     NULL};
 
 #define REG_rAX 0x0
@@ -37,7 +37,6 @@ const char *register_name[] = {
 #define REG_rBP 0x5
 #define REG_rSI 0x6
 #define REG_rDI 0x7
-
 
 const char *segment_register_name[] = {"es", "cs", "ss", "ds",
                                        "fs", "gs", NULL};
@@ -68,7 +67,8 @@ int token_str_list_used = 0;
 
 int IsEqualTokenStr(const TokenStr *ts, const char *s) {
   int s_len = strlen(s);
-  if (s_len != ts->len) return 0;
+  if (s_len != ts->len)
+    return 0;
   return strncmp(ts->str, s, s_len) == 0;
 }
 int IsEqualTokenStrs(const TokenStr *tsa, const TokenStr *tsb) {
@@ -146,7 +146,8 @@ int FindLabel(const TokenStr *token) {
   printf("Search LabelName %s\n", TmpTokenCStr(token));
   for (int i = 0; i < labels_count; i++) {
     printf("LabelName[%d] = %s\n", i, TmpTokenCStr(labels[i].token));
-    if (IsEqualTokenStrs(labels[i].token, token)) return i;
+    if (IsEqualTokenStrs(labels[i].token, token))
+      return i;
   }
   return -1;
 }
@@ -187,7 +188,8 @@ void PutEndOfInstr() {
 int ReadRegisterToken(const TokenStr *tokens, int num_of_tokens, int index,
                       RegisterInfo *reg_info) {
   // retv: Next index or -1 if There is no register name at index.
-  if (index >= num_of_tokens) return -1;
+  if (index >= num_of_tokens)
+    return -1;
   for (int i = 0; register_name[i]; i++) {
     if (IsEqualTokenStr(&tokens[index], register_name[i])) {
       reg_info->number = i & 7;
@@ -204,51 +206,52 @@ Operand *ReadOperand(const TokenStr *tokens, int num_of_tokens, int *index,
     Error("Trying to read an operand beyond the end of tokens.");
   }
   switch (tokens[*index].type) {
-    case kIdentifier:
-      ope->token = &tokens[*index];
-      if (~ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_info)) {
-        (*index)++;
-        ope->type = kReg;
-        return ope;
-      }
-      break;
-    case kInteger:
-      ope->token = &tokens[*index];
-      ope->imm = GetIntegerFromTokenStr(&tokens[*index]);
+  case kIdentifier:
+    ope->token = &tokens[*index];
+    if (~ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_info)) {
       (*index)++;
-      ope->type = kImm;
+      ope->type = kReg;
       return ope;
-    case kLabel:
-      ope->token = &tokens[*index];
+    }
+    break;
+  case kInteger:
+    ope->token = &tokens[*index];
+    ope->imm = GetIntegerFromTokenStr(&tokens[*index]);
+    (*index)++;
+    ope->type = kImm;
+    return ope;
+  case kLabel:
+    ope->token = &tokens[*index];
+    (*index)++;
+    ope->type = kLabelName;
+    return ope;
+  case kMemOfsBegin:
+    ope->type = kMem;
+    (*index)++;
+    if (ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_index)) {
+      printf("Index Reg found: %s\n", TmpTokenCStr(&tokens[*index]));
       (*index)++;
-      ope->type = kLabelName;
-      return ope;
-    case kMemOfsBegin:
-      ope->type = kMem;
+    }
+    if (tokens[*index].type != kMemOfsEnd) {
+      ErrorWithLine(&tokens[*index], "Expected ] but got %s",
+                    TmpTokenCStr(&tokens[*index]));
+    }
+    (*index)++;
+    return ope;
+  case kOperator:
+    if (IsEqualTokenStr(&tokens[*index], "-")) {
       (*index)++;
-      if (ReadRegisterToken(tokens, num_of_tokens, *index, &ope->reg_index)) {
-        printf("Index Reg found: %s\n", TmpTokenCStr(&tokens[*index]));
-        (*index)++;
+      if (ReadOperand(tokens, num_of_tokens, index, ope)) {
+        if (ope->type == kImm) {
+          ope->imm = -ope->imm;
+          return ope;
+        }
       }
-      if(tokens[*index].type != kMemOfsEnd){
-        ErrorWithLine(&tokens[*index], "Expected ] but got %s", TmpTokenCStr(&tokens[*index]));
-      }
-      (*index)++;
-      return ope;
-    case kOperator:
-      if(IsEqualTokenStr(&tokens[*index], "-")){
-         (*index)++;
-         if(ReadOperand(tokens, num_of_tokens, index, ope)){
-           if(ope->type == kImm){
-              ope->imm = -ope->imm;
-              return ope;
-           }
-         }
-      }
-      break;
-    default:
-      // do nothing -> Error
-      break;
+    }
+    break;
+  default:
+    // do nothing -> Error
+    break;
   }
   return NULL;
 }
@@ -274,45 +277,45 @@ int ParseOpAssign(const Operand *left, const Operand *right) {
     return 0;
   } else if (left->type == kReg && right->type == kImm) {
     switch (left->reg_info.category) {
-      case kReg64Legacy:
-        // case kReg64Low:
-        // case kReg64Hi:
-        PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
-        PutByte(OP_MOV_Ev_Iz);
-        PutByte(ModRM(3, 0, left->reg_info.number));
-        // imm32
-        for (int bi = 0; bi < 4; bi++) {
-          PutByte((right->imm >> (8 * bi)) & 0xff);
-        }
-        return 0;
-      case kReg32:
-        PutByte(OP_MOV_Ev_Iz);
-        PutByte(ModRM(3, 0, left->reg_info.number));
-        // imm32
-        for (int bi = 0; bi < 4; bi++) {
-          PutByte((right->imm >> (8 * bi)) & 0xff);
-        }
-        return 0;
-      case kReg16:
-        PutByte(0xb8 | left->reg_info.number);
-        // imm16
-        for (int bi = 0; bi < 2; bi++) {
-          PutByte((right->imm >> (8 * bi)) & 0xff);
-        }
-        return 0;
-      default:
-        break;
+    case kReg64Legacy:
+      // case kReg64Low:
+      // case kReg64Hi:
+      PutByte(PREFIX_REX | PREFIX_REX_BITS_W);
+      PutByte(OP_MOV_Ev_Iz);
+      PutByte(ModRM(3, 0, left->reg_info.number));
+      // imm32
+      for (int bi = 0; bi < 4; bi++) {
+        PutByte((right->imm >> (8 * bi)) & 0xff);
+      }
+      return 0;
+    case kReg32:
+      PutByte(OP_MOV_Ev_Iz);
+      PutByte(ModRM(3, 0, left->reg_info.number));
+      // imm32
+      for (int bi = 0; bi < 4; bi++) {
+        PutByte((right->imm >> (8 * bi)) & 0xff);
+      }
+      return 0;
+    case kReg16:
+      PutByte(0xb8 | left->reg_info.number);
+      // imm16
+      for (int bi = 0; bi < 2; bi++) {
+        PutByte((right->imm >> (8 * bi)) & 0xff);
+      }
+      return 0;
+    default:
+      break;
     }
   } else if (left->type == kReg && right->type == kMem) {
     // reg = [mem location]
-    if(left->reg_info.category == kReg8){
+    if (left->reg_info.category == kReg8) {
       // 2.1.5 Table 2-1. 16-Bit Addressing Forms with the ModR/M Byte
-      if(right->reg_index.number == REG_rSI){
+      if (right->reg_index.number == REG_rSI) {
         PutByte(OP_MOV_Gb_Eb);
         PutByte(ModRM(0, left->reg_info.number, 4));
         return 0;
       }
-    } 
+    }
   }
   Error("Not implemented");
   return 1;
@@ -344,16 +347,16 @@ int ParseOpCmp(const Operand *left, const Operand *right) {
   } else */
   if (left->type == kImm && right->type == kReg) {
     switch (right->reg_info.category) {
-      case kReg32:
-        PutByte(OP_Immediate_Grp1_Ev_Ib);
-        PutByte(ModRM(3, 7, right->reg_info.number));
-        if (left->imm & ~0xff) {
-          Error("Not implemented imm larger than 8bits");
-        }
-        PutByte(left->imm & 0xff);
-        return 0;
-      default:
-        break;
+    case kReg32:
+      PutByte(OP_Immediate_Grp1_Ev_Ib);
+      PutByte(ModRM(3, 7, right->reg_info.number));
+      if (left->imm & ~0xff) {
+        Error("Not implemented imm larger than 8bits");
+      }
+      PutByte(left->imm & 0xff);
+      return 0;
+    default:
+      break;
     }
     Error("Not implemented imm");
   } else {
@@ -368,7 +371,8 @@ const OpEntry op_table[] = {
 const OpEntry *FindOp(const TokenStr *tokenstr) {
   const OpEntry *op;
   for (op = op_table; op->name; op++) {
-    if (IsEqualTokenStr(tokenstr, op->name)) return op;
+    if (IsEqualTokenStr(tokenstr, op->name))
+      return op;
   }
   return NULL;
 }
@@ -378,14 +382,14 @@ const OpEntry *FindOp(const TokenStr *tokenstr) {
 //
 
 int ParseMnemonicJMP(const TokenStr *tokens, int num_of_tokens, int index) {
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
 
   Operand jmp_target;
   if (!ReadOperand(tokens, num_of_tokens, &index, &jmp_target)) {
     ErrorWithLine(&tokens[index], "Expected operand, got %s",
                   TmpTokenCStr(&tokens[index]));
   }
-  if(jmp_target.type == kImm){
+  if (jmp_target.type == kImm) {
     int64_t rel_offset = jmp_target.imm;
     if ((rel_offset & ~127) && ~(rel_offset | 127)) {
       Error("Offset out of bound (not impleented yet)");
@@ -399,7 +403,7 @@ int ParseMnemonicJMP(const TokenStr *tokens, int num_of_tokens, int index) {
 }
 
 int ParseMnemonicINT(const TokenStr *tokens, int num_of_tokens, int index) {
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   if (tokens[index].type == kInteger) {
     int64_t int_num = GetIntegerFromTokenStr(&tokens[index]);
     index++;
@@ -415,25 +419,25 @@ int ParseMnemonicINT(const TokenStr *tokens, int num_of_tokens, int index) {
 }
 
 int ParseMnemonicNOP(const TokenStr *tokens, int num_of_tokens, int index) {
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   PutByte(0x90);
   return index;
 }
 
 int ParseMnemonicRETQ(const TokenStr *tokens, int num_of_tokens, int index) {
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   PutByte(0xc3);
   return index;
 }
 
 int ParseMnemonicHLT(const TokenStr *tokens, int num_of_tokens, int index) {
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   PutByte(0xf4);
   return index;
 }
 
 int ParseMnemonicSYSCALL(const TokenStr *tokens, int num_of_tokens, int index) {
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   PutByte(0x0f);
   PutByte(0x05);
   return index;
@@ -441,7 +445,7 @@ int ParseMnemonicSYSCALL(const TokenStr *tokens, int num_of_tokens, int index) {
 
 int ParseMnemonicINC(const TokenStr *tokens, int num_of_tokens, int index) {
   int mn_index = index;
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   Operand ope;
   if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
     if (ope.reg_info.category == kReg32) {
@@ -462,7 +466,7 @@ int ParseMnemonicINC(const TokenStr *tokens, int num_of_tokens, int index) {
 }
 int ParseMnemonicPUSH(const TokenStr *tokens, int num_of_tokens, int index) {
   int mn_index = index;
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   Operand ope;
   if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
     if (ope.reg_info.category == kReg64Legacy ||
@@ -484,7 +488,7 @@ int ParseMnemonicPUSH(const TokenStr *tokens, int num_of_tokens, int index) {
 
 int ParseMnemonicPOP(const TokenStr *tokens, int num_of_tokens, int index) {
   int mn_index = index;
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   Operand ope;
   if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
     if (ope.reg_info.category == kReg64Legacy ||
@@ -506,7 +510,7 @@ int ParseMnemonicPOP(const TokenStr *tokens, int num_of_tokens, int index) {
 
 int ParseMnemonicJNE(const TokenStr *tokens, int num_of_tokens, int index) {
   int mn_index = index;
-  index++;  // skip mnemonic
+  index++; // skip mnemonic
   Operand ope;
   if (ReadOperand(tokens, num_of_tokens, &index, &ope)) {
     if (ope.type == kLabelName) {
@@ -549,7 +553,8 @@ const MnemonicEntry mnemonic_table[] = {{"jmp", ParseMnemonicJMP},
 const MnemonicEntry *FindMnemonic(const TokenStr *tokenstr) {
   const MnemonicEntry *mne;
   for (mne = mnemonic_table; mne->mnemonic; mne++) {
-    if (IsEqualTokenStr(tokenstr, mne->mnemonic)) return mne;
+    if (IsEqualTokenStr(tokenstr, mne->mnemonic))
+      return mne;
   }
   return NULL;
 }
@@ -680,6 +685,10 @@ int Parse(const TokenStr *tokens, int num_of_tokens, int index) {
 int main(int argc, char *argv[]) {
   int src_path_index = 0;
   int dst_path_index = 0;
+  enum {
+    kOutFormatELF,
+    kOutFormatMachO,
+  } output_format = kOutFormatMachO;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-o") == 0) {
       i++;
@@ -702,7 +711,8 @@ int main(int argc, char *argv[]) {
   FILE *src_fp = fopen(argv[src_path_index], "rb");
   dst_fp = fopen(argv[dst_path_index], "wb");
 
-  if (!src_fp || !dst_fp) return 0;
+  if (!src_fp || !dst_fp)
+    return 0;
 
   int size = fread(buf, 1, BUF_SIZE, src_fp);
   if (size >= BUF_SIZE) {
@@ -717,8 +727,10 @@ int main(int argc, char *argv[]) {
   Parse(token_str_list, token_str_list_used, 0);
 
   if (!is_hex_mode) {
-    //WriteObjFileForMachO(dst_fp, bin_buf, bin_buf_size);
-    WriteObjFileForELF64(dst_fp, bin_buf, bin_buf_size);
+    if (output_format == kOutFormatMachO)
+      WriteObjFileForMachO(dst_fp, bin_buf, bin_buf_size);
+    else if (output_format == kOutFormatELF)
+      WriteObjFileForELF64(dst_fp, bin_buf, bin_buf_size);
   }
 
   return 0;

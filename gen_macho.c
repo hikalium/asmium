@@ -6,8 +6,7 @@
 extern uint8_t mach_o_header[0x130];
 extern uint8_t mach_o_footer[0x18];
 
-void WriteObjFileForMachO(FILE *fp, uint8_t *bin_buf, uint32_t bin_size)
-{
+void WriteObjFileForMachO(FILE *fp, uint8_t *bin_buf, uint32_t bin_size) {
   // header
   *((uint32_t *)&mach_o_header[0x40]) = bin_size;
   *((uint32_t *)&mach_o_header[0x50]) = bin_size;
@@ -145,7 +144,7 @@ uint8_t mach_o_header[0x130] = {
     0x78,
     0x74,
     0x00,
-    0x00,  // "__text"
+    0x00, // "__text"
     0x00,
     0x00,
     0x00,
@@ -161,7 +160,7 @@ uint8_t mach_o_header[0x130] = {
     0x58,
     0x54,
     0x00,
-    0x00,  // "__TEXT"
+    0x00, // "__TEXT"
     0x00,
     0x00,
     0x00,
@@ -355,6 +354,5 @@ uint8_t mach_o_footer[0x18] = {
     0x00, 0x00, 0x00, 0x00,
     // label names. each label names should be null terminated.
     // 0x00, ["label name", ...] [padding to align 4-bytes]
-    0x00, 0x5f, 0x6d, 0x61, 0x69, 0x6e, 0x00, 0x00,  // "_main"
+    0x00, 0x5f, 0x6d, 0x61, 0x69, 0x6e, 0x00, 0x00, // "_main"
 };
-

@@ -22,4 +22,4 @@ run: asmium
 	./testbin
 
 format:
-	clang-format -i -style=Google $(SRCS)
+	clang-format -i $(SRCS)
