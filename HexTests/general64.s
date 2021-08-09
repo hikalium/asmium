@@ -1,0 +1,11 @@
+.bits 64
+	push rbp
+	rbp = rsp
+	ecx ^= ebx
+	eax ^= eax
+	pop rbp
+	retq
+	syscall
+.data8 0x05 0xec
+.data16 0x05 0xec 0x05ec
+.data32 0x05 0xec 0x05ec1234

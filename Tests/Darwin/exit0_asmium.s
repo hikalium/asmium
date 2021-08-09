@@ -1,5 +1,5 @@
 	push rbp
 	rbp = rsp
-	xor eax eax
+	eax ^= eax
 	pop rbp
 	retq

@@ -1,12 +1,15 @@
-SRCS=asmium.c
+SRCS=asmium.c tokenizer.c gen_macho.c gen_elf64.c
+HEADERS=asmium.h
+CFLAGS=-Wall -Wpedantic
 
 default: asmium
 
-asmium: $(SRCS) Makefile
+asmium: $(SRCS) $(HEADERS) Makefile
 	$(CC) $(CFLAGS) -o asmium $(SRCS)
 
-test :
+test : asmium
 	make -C Tests/
+	make -C HexTests/
 
 clean: 
 	-rm asmium
@@ -19,4 +22,4 @@ run: asmium
 	./testbin
 
 format:
-	clang-format -i -style=Google $(SRCS)
+	clang-format -i $(SRCS)
